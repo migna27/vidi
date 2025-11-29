@@ -33,23 +33,43 @@ export interface RenderStatus {
   totalFrames?: number;
 }
 
-export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter';
-export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon';
-export type ParticleShape = 'circle' | 'square' | 'star';
+export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch';
+export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate';
+export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note';
+
+export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
+export type ProceduralStyle = 'stars' | 'grid' | 'plasma' | 'tunnel' | 'matrix';
+export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
 
 export interface RendererConfig {
   id: string;
   name: string;
+  background: {
+    type: BackgroundType;
+    color: string; // Base color or fallback
+    url?: string; // Blob URL for image or video
+    proceduralStyle?: ProceduralStyle;
+    intensity?: number; // Speed or brightness for procedural
+  };
   colors: {
-    background: string; // Hex or 'gradient' logic
     text: string;
     active: string;
     secondary: string; // Used for shadows/accents
+  };
+  font: {
+    family: string;
+    weight: string;
+    italic: boolean;
   };
   animation: {
     entrance: AnimationStyle;
     active: ActiveStyle;
     exit: AnimationStyle;
+  };
+  audioReactivity: {
+    enabled: boolean; // Master switch
+    sensitivity: number; // 0.5 to 2.0
+    visualizerStyle: VisualizerStyle;
   };
   effects: {
     glow: number; // 0 to 1 intensity
@@ -58,6 +78,9 @@ export interface RendererConfig {
     vignette: boolean;
     scanlines: boolean;
     filmGrain: boolean;
+    mirror: boolean;
+    invert: boolean;
+    barrelDistortion: boolean;
   };
   particles: {
     enabled: boolean;

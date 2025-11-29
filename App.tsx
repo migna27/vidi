@@ -10,29 +10,35 @@ import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from '
 // @ts-ignore
 import { Muxer as Mp4Muxer, ArrayBufferTarget as Mp4ArrayBufferTarget } from 'mp4-muxer';
 
-// Helper to parse SRT timestamp "00:00:12,345" to seconds
+// Helper to parse SRT timestamp "00:00:12,345" or "00:00:12.345" to seconds
 const parseSrtTimestamp = (timestamp: string): number => {
-  const parts = timestamp.split(':');
-  const secondsParts = parts[2].split(',');
+  if (!timestamp) return 0;
+  // Normalize comma to dot and trim
+  const normalized = timestamp.replace(',', '.').trim();
+  const parts = normalized.split(':');
   
-  const hours = parseInt(parts[0], 10);
-  const minutes = parseInt(parts[1], 10);
-  const seconds = parseInt(secondsParts[0], 10);
-  const milliseconds = parseInt(secondsParts[1], 10);
+  if (parts.length < 3) return 0; 
 
-  return (hours * 3600) + (minutes * 60) + seconds + (milliseconds / 1000);
+  const hours = parseFloat(parts[0]);
+  const minutes = parseFloat(parts[1]);
+  const seconds = parseFloat(parts[2]); // parseFloat handles "12.345" correctly
+
+  return (hours * 3600) + (minutes * 60) + seconds;
 };
 
 // Helper to parse SRT string to LyricData
 const parseSrtToLyricData = (srtContent: string): LyricData => {
-  const blocks = srtContent.trim().split(/\n\s*\n/); // Split by empty lines
+  // Normalize line endings
+  const normalizedContent = srtContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const blocks = normalizedContent.trim().split(/\n\s*\n/);
+  
   const segments: Segment[] = [];
   
   blocks.forEach((block, index) => {
     const lines = block.split('\n');
     if (lines.length < 2) return;
 
-    // Find the timestamp line (usually line 2, but sometimes line 1 if index is missing)
+    // Find the timestamp line
     let timeLineIndex = lines.findIndex(l => l.includes('-->'));
     if (timeLineIndex === -1) return;
 
@@ -42,27 +48,42 @@ const parseSrtToLyricData = (srtContent: string): LyricData => {
     const start = parseSrtTimestamp(startStr);
     const end = parseSrtTimestamp(endStr);
     
-    // The text is everything after the timestamp line
-    const textLines = lines.slice(timeLineIndex + 1);
-    const text = textLines.join(' ').trim();
-    
-    if (!text) return;
+    if (isNaN(start) || isNaN(end)) return;
 
-    // Word interpolation: Distribute words evenly across the duration
-    const wordsRaw = text.split(/\s+/);
-    const duration = end - start;
-    const wordDuration = duration / wordsRaw.length;
+    // Get content lines, skipping timestamp and index lines
+    const rawLines = lines.slice(timeLineIndex + 1);
     
-    const words: Word[] = wordsRaw.map((wordText, wIdx) => {
-      const wordStart = start + (wIdx * wordDuration);
-      const wordEnd = wordStart + wordDuration;
-      return {
-        word: wordText,
-        start: wordStart,
-        end: wordEnd,
-        probability: 1.0, // Default for manual subs
-        line_number: index % 2 // Alternate visual lines slightly
-      };
+    // Clean tags (like <i>, <b>, <font>) and empty lines
+    const cleanLines = rawLines
+        .map(l => l.replace(/<[^>]*>/g, '').trim())
+        .filter(l => l.length > 0);
+
+    if (cleanLines.length === 0) return;
+
+    const text = cleanLines.join('\n');
+    
+    // Word calculation: Distribute time across all words in the block
+    let totalWords = 0;
+    cleanLines.forEach(l => totalWords += l.split(/\s+/).length);
+    
+    const duration = end - start;
+    const timePerWord = totalWords > 0 ? duration / totalWords : 0;
+    
+    const words: Word[] = [];
+    let currentTime = start;
+
+    cleanLines.forEach((lineText, lineIdx) => {
+        const lineWords = lineText.split(/\s+/);
+        lineWords.forEach(w => {
+            words.push({
+                word: w,
+                start: currentTime,
+                end: currentTime + timePerWord,
+                probability: 1.0,
+                line_number: lineIdx // Preserve visual line structure from SRT
+            });
+            currentTime += timePerWord;
+        });
     });
 
     segments.push({
@@ -502,7 +523,7 @@ export default function App() {
   return (
     <div className="w-full h-screen bg-black overflow-hidden flex flex-col">
       <div className="flex-1 relative">
-        <CanvasVideoRenderer ref={rendererRef} data={data} config={rendererConfig} />
+        <CanvasVideoRenderer ref={rendererRef} data={data} config={rendererConfig} isPlaying={isPlaying} />
         
         {/* Loading/Error Overlay */}
         {(renderStatus.state !== 'idle' || error) && (

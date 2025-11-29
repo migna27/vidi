@@ -1,6 +1,19 @@
 
 import { LyricData, RendererConfig } from "./types";
 
+export const FONTS = [
+  'Montserrat',
+  'Anton',
+  'Bebas Neue',
+  'Lobster',
+  'Pacifico',
+  'Permanent Marker',
+  'Press Start 2P',
+  'Cinzel',
+  'Oswald',
+  'Playfair Display'
+];
+
 export const DEFAULT_LYRICS: LyricData = {
   "createdAt": "2025-11-29T01:23:00.207Z",
   "segments": [
@@ -95,16 +108,25 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'neon-night',
     name: 'Neon Night',
+    background: {
+      type: 'solid',
+      color: '#050505'
+    },
     colors: {
-      background: '#050505',
       text: '#ffffff',
       active: '#22d3ee', // Cyan
       secondary: '#a855f7' // Purple
     },
+    font: { family: 'Montserrat', weight: '900', italic: false },
     animation: {
       entrance: 'slide',
       active: 'neon',
       exit: 'fade'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.0,
+      visualizerStyle: 'spectrum'
     },
     effects: {
       glow: 0.8,
@@ -112,7 +134,10 @@ export const TEMPLATES: RendererConfig[] = [
       chromaticAberration: true,
       vignette: true,
       scanlines: false,
-      filmGrain: false
+      filmGrain: false,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
     },
     particles: {
       enabled: true,
@@ -130,16 +155,27 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'cyber-glitch',
     name: 'Cyber Glitch',
+    background: {
+      type: 'procedural',
+      color: '#000000',
+      proceduralStyle: 'matrix',
+      intensity: 1.0
+    },
     colors: {
-      background: '#000000',
       text: '#e2e8f0',
       active: '#00ff00', // Matrix Green
       secondary: '#ff0000' // Red
     },
+    font: { family: 'Oswald', weight: '700', italic: false },
     animation: {
       entrance: 'typewriter',
       active: 'jitter',
       exit: 'slam'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.2,
+      visualizerStyle: 'shockwave'
     },
     effects: {
       glow: 0.4,
@@ -147,13 +183,16 @@ export const TEMPLATES: RendererConfig[] = [
       chromaticAberration: true,
       vignette: true,
       scanlines: true,
-      filmGrain: true
+      filmGrain: true,
+      mirror: false,
+      invert: true,
+      barrelDistortion: false
     },
     particles: {
       enabled: true,
-      count: 80,
+      count: 40,
       speed: 3.0,
-      shape: 'square',
+      shape: 'hexagon',
       color: ['#00ff00', '#003300', '#ffffff']
     },
     camera: {
@@ -165,16 +204,25 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'bubble-pop',
     name: 'Bubble Pop',
-    colors: {
-      background: '#fff7ed', // Orange 50
-      text: '#4c1d95', // Violet 900
-      active: '#db2777', // Pink 600
-      secondary: '#fbbf24' // Amber 400
+    background: {
+      type: 'solid',
+      color: '#fff7ed'
     },
+    colors: {
+      text: '#4c1d95',
+      active: '#db2777',
+      secondary: '#fbbf24'
+    },
+    font: { family: 'Pacifico', weight: '400', italic: false },
     animation: {
       entrance: 'slam',
       active: 'bounce',
       exit: 'zoom'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 0.8,
+      visualizerStyle: 'orb'
     },
     effects: {
       glow: 0.0,
@@ -182,13 +230,16 @@ export const TEMPLATES: RendererConfig[] = [
       chromaticAberration: false,
       vignette: false,
       scanlines: false,
-      filmGrain: false
+      filmGrain: false,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
     },
     particles: {
       enabled: true,
       count: 50,
       speed: 0.5,
-      shape: 'circle',
+      shape: 'note',
       color: ['#db2777', '#fbbf24', '#3b82f6', '#f472b6']
     },
     camera: {
@@ -200,16 +251,25 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'minimalist',
     name: 'Minimalist',
+    background: {
+      type: 'solid',
+      color: '#ffffff'
+    },
     colors: {
-      background: '#ffffff',
       text: '#171717',
       active: '#000000',
       secondary: '#737373'
     },
+    font: { family: 'Bebas Neue', weight: '400', italic: false },
     animation: {
       entrance: 'fade',
       active: 'pulse',
       exit: 'fade'
+    },
+    audioReactivity: {
+      enabled: false,
+      sensitivity: 0.0,
+      visualizerStyle: 'none'
     },
     effects: {
       glow: 0.0,
@@ -217,7 +277,10 @@ export const TEMPLATES: RendererConfig[] = [
       chromaticAberration: false,
       vignette: false,
       scanlines: false,
-      filmGrain: true
+      filmGrain: true,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
     },
     particles: {
       enabled: false,
@@ -228,6 +291,296 @@ export const TEMPLATES: RendererConfig[] = [
     },
     camera: {
       shake: false,
+      zoomBeat: false,
+      rotate: false
+    }
+  },
+  {
+    id: 'retro-synth',
+    name: 'Synthwave Sunset',
+    background: {
+      type: 'procedural',
+      color: '#2b0054',
+      proceduralStyle: 'grid',
+      intensity: 0.8
+    },
+    colors: {
+      text: '#facc15',
+      active: '#f472b6',
+      secondary: '#a855f7'
+    },
+    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    animation: {
+      entrance: 'slide',
+      active: 'neon',
+      exit: 'zoom'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.0,
+      visualizerStyle: 'spectrum'
+    },
+    effects: {
+      glow: 0.9,
+      blur: true,
+      chromaticAberration: true,
+      vignette: true,
+      scanlines: true,
+      filmGrain: true,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 120,
+      speed: 2.5,
+      shape: 'triangle',
+      color: ['#f472b6', '#22d3ee', '#facc15']
+    },
+    camera: {
+      shake: true,
+      zoomBeat: true,
+      rotate: false
+    }
+  },
+  {
+    id: 'cinematic-epic',
+    name: 'Cinematic Epic',
+    background: {
+      type: 'procedural',
+      color: '#0f172a',
+      proceduralStyle: 'stars',
+      intensity: 0.5
+    },
+    colors: {
+      text: '#e2e8f0',
+      active: '#fbbf24',
+      secondary: '#94a3b8'
+    },
+    font: { family: 'Cinzel', weight: '700', italic: false },
+    animation: {
+      entrance: 'fade',
+      active: 'pulse',
+      exit: 'fade'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 0.5,
+      visualizerStyle: 'none'
+    },
+    effects: {
+      glow: 0.6,
+      blur: true,
+      chromaticAberration: false,
+      vignette: true,
+      scanlines: false,
+      filmGrain: true,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 40,
+      speed: 0.1,
+      shape: 'circle',
+      color: ['#fbbf24', '#ffffff']
+    },
+    camera: {
+      shake: false,
+      zoomBeat: false,
+      rotate: false
+    }
+  },
+  {
+    id: 'retro-vibe',
+    name: 'Retro Vibe',
+    background: {
+      type: 'solid',
+      color: '#78350f'
+    },
+    colors: {
+      text: '#fef3c7',
+      active: '#d97706',
+      secondary: '#92400e'
+    },
+    font: { family: 'Anton', weight: '400', italic: true },
+    animation: {
+      entrance: 'slide',
+      active: 'wave',
+      exit: 'slide'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 0.7,
+      visualizerStyle: 'shockwave'
+    },
+    effects: {
+      glow: 0.3,
+      blur: false,
+      chromaticAberration: false,
+      vignette: true,
+      scanlines: true,
+      filmGrain: true,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 60,
+      speed: 1.0,
+      shape: 'hexagon',
+      color: ['#d97706', '#fcd34d']
+    },
+    camera: {
+      shake: true,
+      zoomBeat: true,
+      rotate: true
+    }
+  },
+  {
+    id: 'pixel-art',
+    name: 'Pixel Art',
+    background: {
+      type: 'solid',
+      color: '#1a1a1a'
+    },
+    colors: {
+      text: '#ffffff',
+      active: '#3b82f6',
+      secondary: '#ef4444'
+    },
+    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    animation: {
+      entrance: 'glitch',
+      active: 'jitter',
+      exit: 'glitch'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.0,
+      visualizerStyle: 'spectrum'
+    },
+    effects: {
+      glow: 0.0,
+      blur: false,
+      chromaticAberration: false,
+      vignette: false,
+      scanlines: false,
+      filmGrain: false,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 200,
+      speed: 4.0,
+      shape: 'square',
+      color: ['#ffffff', '#3b82f6', '#ef4444']
+    },
+    camera: {
+      shake: true,
+      zoomBeat: false,
+      rotate: false
+    }
+  },
+    {
+    id: 'soft-aurora',
+    name: 'Soft Aurora',
+    background: {
+      type: 'procedural',
+      color: '#0f172a',
+      proceduralStyle: 'plasma',
+      intensity: 0.5
+    },
+    colors: {
+      text: '#94a3b8',
+      active: '#2dd4bf',
+      secondary: '#38bdf8'
+    },
+    font: { family: 'Montserrat', weight: '700', italic: false },
+    animation: {
+      entrance: 'fade',
+      active: 'pulse',
+      exit: 'fade'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 0.6,
+      visualizerStyle: 'orb'
+    },
+    effects: {
+      glow: 0.3,
+      blur: true,
+      chromaticAberration: false,
+      vignette: true,
+      scanlines: false,
+      filmGrain: true,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 60,
+      speed: 0.2,
+      shape: 'circle',
+      color: ['#2dd4bf', '#38bdf8', '#818cf8']
+    },
+    camera: {
+      shake: false,
+      zoomBeat: true,
+      rotate: true
+    }
+  },
+  {
+    id: 'kinetic-pop',
+    name: 'Kinetic Pop',
+    background: {
+      type: 'procedural',
+      color: '#e5e5e5',
+      proceduralStyle: 'tunnel',
+      intensity: 0.7
+    },
+    colors: {
+      text: '#171717',
+      active: '#ef4444',
+      secondary: '#3b82f6'
+    },
+    font: { family: 'Montserrat', weight: '900', italic: false },
+    animation: {
+      entrance: 'slam',
+      active: 'jitter',
+      exit: 'slide'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.1,
+      visualizerStyle: 'shockwave'
+    },
+    effects: {
+      glow: 0.0,
+      blur: false,
+      chromaticAberration: true,
+      vignette: false,
+      scanlines: false,
+      filmGrain: false,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false
+    },
+    particles: {
+      enabled: true,
+      count: 40,
+      speed: 4.0,
+      shape: 'triangle',
+      color: ['#ef4444', '#3b82f6', '#171717']
+    },
+    camera: {
+      shake: true,
       zoomBeat: false,
       rotate: false
     }
