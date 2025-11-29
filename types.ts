@@ -1,3 +1,4 @@
+
 export interface Word {
   word: string;
   start: number;
@@ -20,6 +21,14 @@ export interface LyricData {
 }
 
 export interface AudioVisualizerData {
-  averageFrequency: number;
-  frequencyData: Uint8Array;
+  bass: number;
+  mid: number;
+  high: number;
+  raw: Uint8Array;
+}
+
+export interface RenderStatus {
+  state: 'idle' | 'analyzing' | 'rendering' | 'encoding' | 'done';
+  progress: number;
+  totalFrames?: number;
 }
