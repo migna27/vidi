@@ -1,0 +1,5 @@
+{
+  "name": "KineticFlow Videolyrics",
+  "description": "A dynamic, high-performance kinetic typography renderer for lyric visualization using JSON timestamps.",
+  "requestFramePermissions": []
+}
