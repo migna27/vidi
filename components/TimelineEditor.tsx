@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { LyricData, Segment, Word } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, Save, AlertCircle } from 'lucide-react';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
@@ -119,6 +119,17 @@ const TimeInput = ({
 
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, currentTime, onSeek }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (id: string) => {
+    const newSet = new Set(expandedSegments);
+    if (newSet.has(id)) {
+        newSet.delete(id);
+    } else {
+        newSet.add(id);
+    }
+    setExpandedSegments(newSet);
+  };
 
   const updateSegmentData = (index: number, updates: Partial<Segment>, shouldRecalculateWords = false) => {
     const newSegments = [...data.segments];
@@ -128,6 +139,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     let updatedSegment = { ...oldSegment, ...updates };
 
     // If time or explicit flag changed, recalculate the internal word timestamps
+    // NOTE: This resets custom word timings. Users should edit segment bounds first, then fine-tune words.
     if (shouldRecalculateWords || updates.start !== undefined || updates.end !== undefined) {
        updatedSegment.words = recalculateWords(
           updatedSegment.text, 
@@ -138,12 +150,20 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
 
     newSegments[index] = updatedSegment;
 
-    // If start time changed, we might need to resort, but that can be jarring while editing.
-    // For now, we update in place. A "Sort" button could be added if needed.
     if (updates.start !== undefined) {
          newSegments.sort((a, b) => a.start - b.start);
     }
 
+    onUpdate({ ...data, segments: newSegments });
+  };
+
+  const updateWordData = (segIndex: number, wordIndex: number, updates: Partial<Word>) => {
+    const newSegments = [...data.segments];
+    const segment = { ...newSegments[segIndex] };
+    const newWords = [...segment.words];
+    newWords[wordIndex] = { ...newWords[wordIndex], ...updates };
+    segment.words = newWords;
+    newSegments[segIndex] = segment;
     onUpdate({ ...data, segments: newSegments });
   };
 
@@ -188,13 +208,10 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
 
   // Auto-scroll logic
   useEffect(() => {
-    // Only auto-scroll if we aren't hovering (to prevent fighting the user)
-    // For simplicity, we just scroll if the difference is significant
     const activeIndex = data.segments.findIndex(s => currentTime >= s.start && currentTime <= s.end);
     
     if (activeIndex !== -1 && scrollRef.current) {
         const row = scrollRef.current.children[activeIndex] as HTMLElement;
-        // Check if row is already visible to avoid unnecessary jitter
         if (row) {
             const container = scrollRef.current;
             const rowTop = row.offsetTop;
@@ -247,6 +264,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
             ) : (
                 data.segments.map((seg, idx) => {
                     const isActive = currentTime >= seg.start && currentTime <= seg.end;
+                    const isExpanded = expandedSegments.has(seg.id);
                     
                     return (
                         <div 
@@ -313,14 +331,70 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                                     }`}
                                     rows={Math.max(2, seg.text.split('\n').length)}
                                     value={seg.text}
-                                    onChange={(e) => updateSegmentData(idx, { text: e.target.value }, false)} // Update text state only
-                                    onBlur={() => updateSegmentData(idx, {}, true)} // Recalculate words on blur
+                                    onChange={(e) => updateSegmentData(idx, { text: e.target.value }, false)} 
+                                    onBlur={() => updateSegmentData(idx, {}, true)} 
                                     placeholder="Enter lyrics here..."
                                 />
                                 <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 pointer-events-none">
                                     {(seg.end - seg.start).toFixed(1)}s
                                 </div>
                             </div>
+
+                            {/* ROW 3: WORD EDITING TOGGLE */}
+                            <div className="flex justify-center mt-1 border-t border-white/5 pt-1">
+                                <button 
+                                    onClick={() => toggleExpand(seg.id)}
+                                    className={`text-[10px] flex items-center gap-1 transition-colors ${isExpanded ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'}`}
+                                >
+                                    {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+                                    {isExpanded ? "Hide Words" : "Timing"}
+                                </button>
+                            </div>
+
+                            {/* ROW 4: EXPANDED WORD LIST */}
+                            {isExpanded && (
+                                <div className="mt-2 space-y-1 bg-black/20 p-2 rounded border border-white/5">
+                                    <div className="grid grid-cols-12 gap-2 text-[9px] font-bold text-gray-500 uppercase mb-1 px-1">
+                                        <div className="col-span-4">Word</div>
+                                        <div className="col-span-3 text-center">Start</div>
+                                        <div className="col-span-3 text-center">End</div>
+                                        <div className="col-span-2 text-center">Play</div>
+                                    </div>
+                                    {seg.words.map((word, wIdx) => {
+                                         const isWordActive = currentTime >= word.start && currentTime <= word.end;
+                                         return (
+                                            <div key={wIdx} className={`grid grid-cols-12 gap-2 items-center p-1 rounded transition-colors ${isWordActive ? 'bg-cyan-900/30' : 'hover:bg-white/5'}`}>
+                                                <div className="col-span-4 text-xs text-gray-300 truncate font-mono" title={word.word}>
+                                                    {word.word}
+                                                </div>
+                                                <div className="col-span-3">
+                                                    <TimeInput 
+                                                        className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
+                                                        value={word.start}
+                                                        onChange={(v) => updateWordData(idx, wIdx, { start: v })}
+                                                    />
+                                                </div>
+                                                <div className="col-span-3">
+                                                    <TimeInput 
+                                                        className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
+                                                        value={word.end}
+                                                        onChange={(v) => updateWordData(idx, wIdx, { end: v })}
+                                                    />
+                                                </div>
+                                                 <div className="col-span-2 flex justify-center">
+                                                    <button
+                                                        onClick={() => onSeek(word.start)}
+                                                        className="text-gray-500 hover:text-cyan-400 p-0.5"
+                                                        title="Play word"
+                                                    >
+                                                        <PlayCircle size={10} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                         );
+                                    })}
+                                </div>
+                            )}
 
                         </div>
                     );
