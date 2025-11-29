@@ -1,12 +1,11 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
 import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer } from './types';
-import { Save, FolderOpen, Activity, Loader2, Video, Download } from 'lucide-react';
+import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check } from 'lucide-react';
 
 // @ts-ignore
 import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
@@ -123,6 +122,7 @@ export default function App() {
   
   const [rendererConfig, setRendererConfig] = useState<RendererConfig>(TEMPLATES[0]);
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Web Audio Context Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -156,6 +156,59 @@ export default function App() {
       } else if (audioContextRef.current.state === 'suspended') {
           audioContextRef.current.resume();
       }
+  };
+
+  // Auto-Load Project
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('kinetic-flow-autosave');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.lyricData) setData(parsed.lyricData);
+        if (parsed.config) {
+             const loadedConfig = parsed.config;
+             // Handle expired blob URLs for background which cannot persist across sessions
+             if ((loadedConfig.background.type === 'image' || loadedConfig.background.type === 'video') && 
+                  loadedConfig.background.url?.startsWith('blob:')) {
+                  loadedConfig.background.type = 'solid';
+                  loadedConfig.background.url = undefined;
+             }
+             setRendererConfig(loadedConfig);
+        }
+        if (parsed.timestamp) setLastSaved(new Date(parsed.timestamp));
+        // Note: Audio layers contain AudioBuffers which cannot be serialized to localStorage. 
+        // Users must re-add audio, but settings and lyrics are restored.
+      }
+    } catch (e) {
+      console.error("Autosave load failed", e);
+    }
+  }, []);
+
+  // Auto-Save Project
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const saveState = {
+        version: '1.0',
+        timestamp: Date.now(),
+        lyricData: data,
+        config: rendererConfig
+        // We omit audioLayers as we cannot save buffers
+      };
+      localStorage.setItem('kinetic-flow-autosave', JSON.stringify(saveState));
+      setLastSaved(new Date());
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timer);
+  }, [data, rendererConfig]);
+
+  const handleResetProject = () => {
+    if (confirm("Are you sure you want to reset the project? This will clear all changes and your auto-save.")) {
+       localStorage.removeItem('kinetic-flow-autosave');
+       setData(DEFAULT_LYRICS);
+       setRendererConfig(TEMPLATES[0]);
+       setAudioLayers([]);
+       setLastSaved(null);
+    }
   };
 
   // Handle Layer Upload
@@ -661,8 +714,24 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+             
+             {/* Autosave Status */}
+             {lastSaved && (
+                <div className="text-[10px] text-gray-500 mr-2 flex items-center gap-1 animate-in fade-in duration-500">
+                    <Check size={10} className="text-green-500"/>
+                    <span className="hidden md:inline">Saved {lastSaved.toLocaleTimeString()}</span>
+                </div>
+             )}
+
              {/* Project Actions */}
              <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 mr-4">
+                  <button 
+                    onClick={handleResetProject}
+                    title="Reset Project"
+                    className="p-2 hover:bg-neutral-700 text-gray-400 hover:text-red-400 transition-colors border-r border-white/5"
+                  >
+                      <RotateCcw size={18} />
+                  </button>
                   <button 
                     onClick={handleSaveProject}
                     title="Save Project"
@@ -718,7 +787,10 @@ export default function App() {
               <SettingsPanel 
                  config={rendererConfig} 
                  onUpdate={setRendererConfig}
+                 data={data}
+                 onUpdateData={setData}
                  currentTime={currentTime}
+                 onSeek={handleSeek}
                  onJsonUpload={handleJsonUpload}
                  onSrtUpload={handleSrtUpload}
                  onAudioLayerAdd={handleAudioLayerAdd}

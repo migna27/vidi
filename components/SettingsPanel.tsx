@@ -1,13 +1,19 @@
 
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData } from '../types';
+import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
   config: RendererConfig;
   onUpdate: (config: RendererConfig) => void;
+  // Lyrics Data
+  data: LyricData;
+  onUpdateData: (data: LyricData) => void;
+  // Playback
   currentTime: number;
+  onSeek: (time: number) => void;
   // File Handlers
   onJsonUpload: (jsonStr: string) => void;
   onSrtUpload: (srtStr: string) => void;
@@ -157,7 +163,10 @@ const KeyframeEditor: React.FC<KeyframeEditorProps> = ({ keyframe, defaults, onU
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
     config, 
     onUpdate, 
+    data,
+    onUpdateData,
     currentTime,
+    onSeek,
     onAudioLayerAdd,
     audioLayers,
     onUpdateLayer,
@@ -165,7 +174,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onJsonUpload,
     onSrtUpload,
 }) => {
-  const [activeTab, setActiveTab] = useState<'project' | 'templates' | 'customize' | 'timeline'>('project');
+  const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'templates' | 'customize' | 'timeline'>('project');
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
@@ -301,37 +310,45 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     <div className="h-full flex flex-col bg-neutral-800 border-r border-white/5 text-gray-200">
       
       {/* Tab Navigation */}
-      <div className="flex border-b border-white/5 bg-neutral-900">
+      <div className="flex border-b border-white/5 bg-neutral-900 overflow-x-auto no-scrollbar">
         <button 
           onClick={() => setActiveTab('project')}
           title="Project Files"
-          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'project' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'project' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <FolderOpen size={18} />
-          Project
+          <FolderOpen size={16} />
+          Files
+        </button>
+        <button 
+          onClick={() => setActiveTab('lyrics')}
+          title="Edit Lyrics"
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'lyrics' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+        >
+          <AlignLeft size={16} />
+          Lyrics
         </button>
         <button 
           onClick={() => setActiveTab('templates')}
           title="Templates"
-          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'templates' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'templates' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <LayoutTemplate size={18} />
+          <LayoutTemplate size={16} />
           Presets
         </button>
         <button 
           onClick={() => setActiveTab('customize')}
           title="Customize"
-          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'customize' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'customize' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <Sliders size={18} />
-          Adjust
+          <Sliders size={16} />
+          Style
         </button>
         <button 
           onClick={() => setActiveTab('timeline')}
           title="Keyframes"
-          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'timeline' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'timeline' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <Clock size={18} />
+          <Clock size={16} />
           Keys
         </button>
       </div>
@@ -451,6 +468,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             className="hidden"
                         />
                     </div>
+                    <p className="text-[10px] text-gray-500 mt-2 text-center">
+                        Go to "Lyrics" tab to edit imported data.
+                    </p>
                 </section>
 
                 <section>
@@ -478,6 +498,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </div>
                 </section>
              </div>
+        )}
+
+        {/* LYRICS TAB */}
+        {activeTab === 'lyrics' && (
+            <TimelineEditor 
+                data={data} 
+                onUpdate={onUpdateData} 
+                currentTime={currentTime}
+                onSeek={onSeek}
+            />
         )}
 
         {/* TEMPLATES TAB */}
@@ -513,8 +543,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* CUSTOMIZE TAB */}
         {activeTab === 'customize' && (
           <div className="p-4 space-y-6">
-            {/* ... (Existing Customize Config - No changes needed here, just kept for context) ... */}
-            
             {/* Resolution */}
             <section>
                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -637,7 +665,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="Font Family"
                    value={config.font.family}
-                   options={[...FONTS]} 
+                   options={['Montserrat', 'Anton', 'Bebas Neue', 'Lobster', 'Pacifico', 'Permanent Marker', 'Press Start 2P', 'Cinzel', 'Oswald', 'Playfair Display']} 
                    onChange={(v) => updateNested('font', 'family', v)}
                 />
 
