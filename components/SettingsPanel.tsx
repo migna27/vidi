@@ -1,8 +1,9 @@
 
+
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle } from '../types';
 import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
@@ -174,7 +175,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onJsonUpload,
     onSrtUpload,
 }) => {
-  const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'templates' | 'customize' | 'timeline'>('project');
+  const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'sections' | 'templates' | 'customize' | 'timeline'>('project');
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
@@ -193,6 +194,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     // @ts-ignore
     newConfig[section][key] = value;
     onUpdate(newConfig);
+  };
+
+  const updateSectionStyle = (section: SectionType, key: keyof SectionStyle, value: any) => {
+      const newConfig = JSON.parse(JSON.stringify(config));
+      if (!newConfig.sectionStyles) newConfig.sectionStyles = {};
+      if (!newConfig.sectionStyles[section]) newConfig.sectionStyles[section] = { enabled: false };
+      
+      // @ts-ignore
+      newConfig.sectionStyles[section][key] = value;
+      onUpdate(newConfig);
   };
 
   const updateColor = (key: keyof RendererConfig['colors'], value: string) => {
@@ -326,6 +337,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         >
           <AlignLeft size={16} />
           Lyrics
+        </button>
+        <button 
+          onClick={() => setActiveTab('sections')}
+          title="Sections"
+          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'sections' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+        >
+          <Tags size={16} />
+          Parts
         </button>
         <button 
           onClick={() => setActiveTab('templates')}
@@ -508,6 +527,75 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 currentTime={currentTime}
                 onSeek={onSeek}
             />
+        )}
+
+        {/* SECTIONS TAB */}
+        {activeTab === 'sections' && (
+            <div className="p-4 space-y-6">
+                 {['verse', 'chorus', 'bridge', 'intro', 'outro'].map((sectionKey) => {
+                     const key = sectionKey as SectionType;
+                     const style = config.sectionStyles?.[key] || { enabled: false };
+                     
+                     return (
+                         <div key={key} className="bg-neutral-900 border border-white/5 rounded-lg p-3">
+                             <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                                 <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest">{key}</h3>
+                                 <ToggleInput 
+                                    label=""
+                                    value={style.enabled} 
+                                    onChange={(v) => updateSectionStyle(key, 'enabled', v)}
+                                 />
+                             </div>
+
+                             {style.enabled ? (
+                                 <div className="space-y-3">
+                                     <ColorInput 
+                                        label="Active Color" 
+                                        value={style.colors_active || config.colors.active} 
+                                        onChange={(v) => updateSectionStyle(key, 'colors_active', v)} 
+                                    />
+                                     <ColorInput 
+                                        label="Text Color Override" 
+                                        value={style.colors_text || config.colors.text} 
+                                        onChange={(v) => updateSectionStyle(key, 'colors_text', v)} 
+                                    />
+                                    
+                                    <div>
+                                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                            <span>Glow Boost</span>
+                                            <span>+{((style.effects_glow_boost || 0) * 100).toFixed(0)}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0" max="1" step="0.1" 
+                                            value={style.effects_glow_boost || 0} 
+                                            onChange={(e) => updateSectionStyle(key, 'effects_glow_boost', parseFloat(e.target.value))}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                        />
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                            <span>Zoom Boost</span>
+                                            <span>+{((style.camera_zoom_boost || 0) * 100).toFixed(0)}%</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0" max="0.5" step="0.05" 
+                                            value={style.camera_zoom_boost || 0} 
+                                            onChange={(e) => updateSectionStyle(key, 'camera_zoom_boost', parseFloat(e.target.value))}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                        />
+                                    </div>
+
+                                 </div>
+                             ) : (
+                                 <p className="text-[10px] text-gray-500 text-center py-2">
+                                     Using default global styles.
+                                 </p>
+                             )}
+                         </div>
+                     );
+                 })}
+            </div>
         )}
 
         {/* TEMPLATES TAB */}

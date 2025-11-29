@@ -1,7 +1,8 @@
 
+
 import React, { useEffect, useRef, useState } from 'react';
-import { LyricData, Segment, Word } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { LyricData, Segment, Word, SectionType } from '../types';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
@@ -184,6 +185,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
         start: newStart,
         end: newStart + 2.0,
         text: "New Line",
+        section: 'verse',
         words: []
     };
     newSegment.words = recalculateWords(newSegment.text, newSegment.start, newSegment.end);
@@ -226,6 +228,14 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     }
   }, [currentTime, data.segments]);
 
+  const SECTION_COLORS: Record<SectionType, string> = {
+      verse: 'text-blue-400',
+      chorus: 'text-pink-400',
+      bridge: 'text-yellow-400',
+      intro: 'text-gray-400',
+      outro: 'text-gray-400'
+  };
+
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
         
@@ -265,6 +275,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                 data.segments.map((seg, idx) => {
                     const isActive = currentTime >= seg.start && currentTime <= seg.end;
                     const isExpanded = expandedSegments.has(seg.id);
+                    const sectionColor = SECTION_COLORS[seg.section || 'verse'];
                     
                     return (
                         <div 
@@ -283,24 +294,42 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                             {/* ROW 1: CONTROLS & TIMESTAMPS */}
                             <div className="flex items-center justify-between gap-3">
                                 
-                                {/* Start / End Inputs */}
-                                <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
-                                    <div className="flex flex-col px-1">
-                                        <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
-                                        <TimeInput 
-                                            className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                            value={seg.start}
-                                            onChange={(val) => updateSegmentData(idx, { start: val })}
-                                        />
+                                <div className="flex items-center gap-2">
+                                     {/* Start / End Inputs */}
+                                    <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
+                                        <div className="flex flex-col px-1">
+                                            <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
+                                            <TimeInput 
+                                                className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
+                                                value={seg.start}
+                                                onChange={(val) => updateSegmentData(idx, { start: val })}
+                                            />
+                                        </div>
+                                        <div className="w-px h-6 bg-white/10"></div>
+                                        <div className="flex flex-col px-1">
+                                            <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
+                                            <TimeInput 
+                                                className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
+                                                value={seg.end}
+                                                onChange={(val) => updateSegmentData(idx, { end: val })}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="w-px h-6 bg-white/10"></div>
-                                    <div className="flex flex-col px-1">
-                                        <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
-                                         <TimeInput 
-                                            className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                            value={seg.end}
-                                            onChange={(val) => updateSegmentData(idx, { end: val })}
-                                        />
+
+                                    {/* SECTION SELECTOR */}
+                                    <div className="relative">
+                                        <Tag size={12} className={`absolute left-2 top-1.5 ${sectionColor} opacity-70`}/>
+                                        <select 
+                                            value={seg.section || 'verse'}
+                                            onChange={(e) => updateSegmentData(idx, { section: e.target.value as SectionType })}
+                                            className="bg-neutral-900 border border-white/5 text-[10px] uppercase font-bold text-gray-400 pl-6 pr-1 py-1 rounded focus:border-cyan-500 outline-none cursor-pointer"
+                                        >
+                                            <option value="intro">Intro</option>
+                                            <option value="verse">Verse</option>
+                                            <option value="chorus">Chorus</option>
+                                            <option value="bridge">Bridge</option>
+                                            <option value="outro">Outro</option>
+                                        </select>
                                     </div>
                                 </div>
 

@@ -1,3 +1,5 @@
+
+
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe } from '../types';
 import { RESOLUTIONS } from '../constants';
@@ -387,6 +389,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // Cap dt for seek jumps to prevent particles from flying off to infinity
     const safeDt = Math.abs(dt) > 1.0 ? 0.016 : dt; 
 
+    // Find Active Segment
+    const primaryActiveIndex = data.segments.findIndex(
+      (seg) => time >= seg.start && time <= seg.end
+    );
+    const visibleSegments = data.segments.filter(
+      (seg) => time >= seg.start - 2.0 && time <= seg.end + 2.0
+    );
+    visibleSegments.sort((a, b) => a.start - b.start);
+
     // --- Keyframe Interpolation ---
     // Calculate interpolated config values based on time
     let effectiveColorsActive = config.colors.active;
@@ -468,6 +479,20 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         }
     }
 
+    // --- SECTION STYLE OVERRIDES ---
+    if (primaryActiveIndex !== -1) {
+        const currentSegment = data.segments[primaryActiveIndex];
+        const sectionType = currentSegment.section || 'verse';
+        const sectionStyle = config.sectionStyles?.[sectionType];
+
+        if (sectionStyle && sectionStyle.enabled) {
+            if (sectionStyle.colors_active) effectiveColorsActive = sectionStyle.colors_active;
+            if (sectionStyle.colors_text) effectiveColorsText = sectionStyle.colors_text;
+            if (sectionStyle.effects_glow_boost) effectiveGlow = Math.min(1.0, effectiveGlow + sectionStyle.effects_glow_boost);
+            if (sectionStyle.camera_zoom_boost) effectiveZoomOffset += sectionStyle.camera_zoom_boost;
+        }
+    }
+
 
     // --- Audio Reactivity Handling ---
     let { bass, mid, high, raw } = analysis;
@@ -490,14 +515,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         effectiveGlow = effectiveGlow * (1 + (mid * 0.8) + (bass * 0.2));
     }
 
-    const visibleSegments = data.segments.filter(
-      (seg) => time >= seg.start - 2.0 && time <= seg.end + 2.0
-    );
-    visibleSegments.sort((a, b) => a.start - b.start);
-
-    const primaryActiveIndex = data.segments.findIndex(
-      (seg) => time >= seg.start && time <= seg.end
-    );
 
     // --- 1. Background Rendering ---
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform

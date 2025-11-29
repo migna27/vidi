@@ -8,11 +8,14 @@ export interface Word {
   line_number: number;
 }
 
+export type SectionType = 'verse' | 'chorus' | 'bridge' | 'intro' | 'outro';
+
 export interface Segment {
   id: string;
   start: number;
   end: number;
   text: string;
+  section: SectionType;
   words: Word[];
 }
 
@@ -49,6 +52,14 @@ export interface KeyframeValues {
   effects_glow?: number;
   camera_zoom?: number; 
   camera_rotate?: number;
+}
+
+export interface SectionStyle {
+  enabled: boolean;
+  colors_text?: string;
+  colors_active?: string;
+  effects_glow_boost?: number; // Multiplier or add value
+  camera_zoom_boost?: number;
 }
 
 export interface AnimationKeyframe {
@@ -120,6 +131,13 @@ export interface RendererConfig {
     shake: boolean;
     zoomBeat: boolean;
     rotate: boolean;
+  };
+  sectionStyles: {
+    verse: SectionStyle;
+    chorus: SectionStyle;
+    bridge: SectionStyle;
+    intro: SectionStyle;
+    outro: SectionStyle;
   };
   keyframes: AnimationKeyframe[];
 }

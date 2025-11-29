@@ -28,6 +28,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 0,
       "end": 12.76,
       "text": "SON LAS TRES\nY DIEZ DE LA\nMAÑANA",
+      "section": "intro",
       "words": [
         { "word": "SON", "start": 0, "end": 11.34, "probability": 0.95, "line_number": 0 },
         { "word": "LAS", "start": 11.34, "end": 11.5, "probability": 0.99, "line_number": 0 },
@@ -44,6 +45,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 12.76,
       "end": 15.36,
       "text": "LA LUZ DE TU\nMENSAJE EN\nMI CARA",
+      "section": "verse",
       "words": [
         { "word": "LA", "start": 12.76, "end": 13.7, "probability": 0.99, "line_number": 0 },
         { "word": "LUZ", "start": 13.7, "end": 13.85, "probability": 0.99, "line_number": 0 },
@@ -60,6 +62,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 15.36,
       "end": 17.52,
       "text": "LO ANALIZO\nTODO CADA\nPUTO PIXEL",
+      "section": "verse",
       "words": [
         { "word": "LO", "start": 15.36, "end": 15.7, "probability": 0.99, "line_number": 0 },
         { "word": "ANALIZO", "start": 15.7, "end": 16.219, "probability": 0.99, "line_number": 0 },
@@ -74,6 +77,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 17.52,
       "end": 19.759,
       "text": "EL TIEMPO\nQUE TARDASTE\nLA PALABRA",
+      "section": "verse",
       "words": [
         { "word": "EL", "start": 17.52, "end": 18.13, "probability": 0.99, "line_number": 0 },
         { "word": "TIEMPO", "start": 18.13, "end": 18.37, "probability": 0.99, "line_number": 0 },
@@ -88,6 +92,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 19.759,
       "end": 20.72,
       "text": "EXACTA",
+      "section": "bridge",
       "words": [
         { "word": "EXACTA", "start": 19.759, "end": 20.72, "probability": 0.99, "line_number": 3 }
       ]
@@ -97,6 +102,7 @@ export const DEFAULT_LYRICS: LyricData = {
       "start": 20.72,
       "end": 22.8,
       "text": "CADA EMOJI\nES UN CÓDIGO\nQUE INTENTO",
+      "section": "chorus",
       "words": [
         { "word": "CADA", "start": 20.72, "end": 21.22, "probability": 0.99, "line_number": 0 },
         { "word": "EMOJI", "start": 21.22, "end": 21.53, "probability": 0.99, "line_number": 0 },
@@ -108,6 +114,14 @@ export const DEFAULT_LYRICS: LyricData = {
       ]
     }
   ]
+};
+
+const DEFAULT_SECTION_STYLES = {
+  verse: { enabled: false },
+  chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.2, camera_zoom_boost: 0.2 },
+  bridge: { enabled: true, colors_active: '#ffff00', effects_glow_boost: 0.0, camera_zoom_boost: 0.0 },
+  intro: { enabled: false },
+  outro: { enabled: false }
 };
 
 export const TEMPLATES: RendererConfig[] = [
@@ -157,6 +171,13 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: true,
       rotate: true
+    },
+    sectionStyles: {
+       verse: { enabled: false },
+       chorus: { enabled: true, colors_active: '#d946ef', effects_glow_boost: 0.3, camera_zoom_boost: 0.2 },
+       bridge: { enabled: true, colors_active: '#facc15', effects_glow_boost: 0.1 },
+       intro: { enabled: false },
+       outro: { enabled: false }
     },
     keyframes: []
   },
@@ -209,6 +230,7 @@ export const TEMPLATES: RendererConfig[] = [
       zoomBeat: false,
       rotate: false
     },
+    sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#ff0000', camera_zoom_boost: 0.1 }},
     keyframes: []
   },
   {
@@ -223,6 +245,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.6, blur: false, chromaticAberration: true, vignette: true, scanlines: true, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 60, speed: 1.5, shape: 'triangle', color: ['#ff00ff', '#00ffff'] },
     camera: { shake: false, zoomBeat: true, rotate: false },
+    sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#facc15', effects_glow_boost: 0.4 }},
     keyframes: []
   },
   {
@@ -237,6 +260,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
     camera: { shake: false, zoomBeat: false, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -251,6 +275,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.4, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 30, speed: 0.2, shape: 'circle', color: ['#ffd700', '#cfc09f'] },
     camera: { shake: false, zoomBeat: false, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -265,6 +290,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: true, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 20, speed: 1.0, shape: 'square', color: ['#facc15', '#ef4444', '#3b82f6'] },
     camera: { shake: true, zoomBeat: true, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -279,6 +305,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.5, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 100, speed: 0.5, shape: 'star', color: ['#ffffff', '#60a5fa'] },
     camera: { shake: false, zoomBeat: false, rotate: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -293,6 +320,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: true, filmGrain: false, mirror: false, invert: true, barrelDistortion: false },
     particles: { enabled: true, count: 50, speed: 2.0, shape: 'circle', color: ['#dc2626', '#2563eb', '#ffffff'] },
     camera: { shake: true, zoomBeat: true, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -307,6 +335,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.7, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 40, speed: 0.5, shape: 'note', color: ['#d8b4fe', '#f3e8ff'] },
     camera: { shake: false, zoomBeat: true, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -321,6 +350,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.3, blur: false, chromaticAberration: true, vignette: true, scanlines: true, filmGrain: true, mirror: true, invert: false, barrelDistortion: true },
     particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
     camera: { shake: true, zoomBeat: false, rotate: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   // --- NEW TEMPLATES BELOW ---
@@ -336,6 +366,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.9, blur: true, chromaticAberration: true, vignette: true, scanlines: false, filmGrain: true, mirror: true, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 100, speed: 2.0, shape: 'circle', color: ['#ef4444', '#ffffff', '#000000'] },
     camera: { shake: true, zoomBeat: true, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -350,6 +381,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.8, blur: false, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: true, count: 50, speed: 0.3, shape: 'hexagon', color: ['#22d3ee', '#c084fc'] },
     camera: { shake: false, zoomBeat: true, rotate: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -364,6 +396,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.4, blur: false, chromaticAberration: false, vignette: true, scanlines: true, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
     particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [] },
     camera: { shake: true, zoomBeat: false, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -378,6 +411,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 1.0, blur: true, chromaticAberration: true, vignette: false, scanlines: false, filmGrain: false, mirror: false, invert: true, barrelDistortion: false },
     particles: { enabled: true, count: 80, speed: 2.5, shape: 'star', color: ['#f472b6', '#3b82f6', '#ffff00'] },
     camera: { shake: true, zoomBeat: true, rotate: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -392,6 +426,7 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { glow: 0.6, blur: true, chromaticAberration: true, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: true },
     particles: { enabled: true, count: 120, speed: 3.0, shape: 'triangle', color: ['#06b6d4', '#ec4899', '#facc15'] },
     camera: { shake: false, zoomBeat: true, rotate: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   }
 ];

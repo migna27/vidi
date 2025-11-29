@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
@@ -101,6 +102,7 @@ const parseSrtToLyricData = (srtContent: string): LyricData => {
       start,
       end,
       text: fullText,
+      section: 'verse',
       words
     });
   });
