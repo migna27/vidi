@@ -1,12 +1,11 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
 import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer } from './types';
-import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check } from 'lucide-react';
+import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2 } from 'lucide-react';
 
 // @ts-ignore
 import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
@@ -126,6 +125,13 @@ export default function App() {
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+  // Caching / Instant Export State
+  const [cachedBlob, setCachedBlob] = useState<Blob | null>(null);
+  const [isCaching, setIsCaching] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+
   // Web Audio Context Refs
   const audioContextRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
@@ -136,7 +142,6 @@ export default function App() {
   const rendererRef = useRef<CanvasVideoRendererRef>(null);
   const requestRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
-  const pauseTimeRef = useRef<number>(0);
 
   // Initialize Audio Engine
   const initAudioEngine = () => {
@@ -150,6 +155,11 @@ export default function App() {
           masterGain.connect(ctx.destination);
           masterGainRef.current = masterGain;
 
+          // Setup MediaStream Destination for Recording
+          const dest = ctx.createMediaStreamDestination();
+          masterGain.connect(dest);
+          audioDestinationRef.current = dest;
+
           // Analyser
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 256;
@@ -160,6 +170,14 @@ export default function App() {
       }
   };
 
+  // Invalidate cache if PROJECT changes
+  useEffect(() => {
+    if (cachedBlob) {
+        console.log("Project changed, invalidating cache...");
+        setCachedBlob(null);
+    }
+  }, [data, rendererConfig, audioLayers]);
+
   // Auto-Load Project
   useEffect(() => {
     try {
@@ -169,7 +187,7 @@ export default function App() {
         if (parsed.lyricData) setData(parsed.lyricData);
         if (parsed.config) {
              const loadedConfig = parsed.config;
-             // Handle expired blob URLs for background which cannot persist across sessions
+             // Handle expired blob URLs
              if ((loadedConfig.background.type === 'image' || loadedConfig.background.type === 'video') && 
                   loadedConfig.background.url?.startsWith('blob:')) {
                   loadedConfig.background.type = 'solid';
@@ -178,8 +196,6 @@ export default function App() {
              setRendererConfig(loadedConfig);
         }
         if (parsed.timestamp) setLastSaved(new Date(parsed.timestamp));
-        // Note: Audio layers contain AudioBuffers which cannot be serialized to localStorage. 
-        // Users must re-add audio, but settings and lyrics are restored.
       }
     } catch (e) {
       console.error("Autosave load failed", e);
@@ -194,7 +210,6 @@ export default function App() {
         timestamp: Date.now(),
         lyricData: data,
         config: rendererConfig
-        // We omit audioLayers as we cannot save buffers
       };
       localStorage.setItem('kinetic-flow-autosave', JSON.stringify(saveState));
       setLastSaved(new Date());
@@ -204,12 +219,13 @@ export default function App() {
   }, [data, rendererConfig]);
 
   const handleResetProject = () => {
-    if (confirm("Are you sure you want to reset the project? This will clear all changes and your auto-save.")) {
+    if (confirm("Are you sure you want to reset the project? This will clear all changes.")) {
        localStorage.removeItem('kinetic-flow-autosave');
        setData(DEFAULT_LYRICS);
        setRendererConfig(TEMPLATES[0]);
        setAudioLayers([]);
        setLastSaved(null);
+       setCachedBlob(null);
     }
   };
 
@@ -234,7 +250,6 @@ export default function App() {
           
           setAudioLayers(prev => {
               const updated = [...prev, newLayer];
-              // Update master duration based on longest track
               const maxDur = Math.max(...updated.map(l => l.duration));
               setDuration(maxDur);
               return updated;
@@ -261,14 +276,13 @@ export default function App() {
       });
   };
 
-  // Sync Audio Nodes with React State (Volume/Mute)
+  // Sync Audio Nodes with React State
   useEffect(() => {
      if (!audioContextRef.current) return;
      
      const hasSolo = audioLayers.some(l => l.solo);
 
      audioLayers.forEach(layer => {
-         // Create gain node if missing
          if (!gainsRef.current.has(layer.id)) {
              const g = audioContextRef.current!.createGain();
              if (masterGainRef.current) g.connect(masterGainRef.current);
@@ -277,17 +291,13 @@ export default function App() {
 
          const gainNode = gainsRef.current.get(layer.id);
          if (gainNode) {
-             // Logic: Muted if layer.muted OR (there is a solo mode active and this layer is NOT soloed)
              const effectiveMute = layer.muted || (hasSolo && !layer.solo);
-             
-             // Smooth transition to avoid clicking
              const currentTime = audioContextRef.current!.currentTime;
              gainNode.gain.cancelScheduledValues(currentTime);
              gainNode.gain.setTargetAtTime(effectiveMute ? 0 : layer.volume, currentTime, 0.05);
          }
      });
      
-     // Cleanup unused gains
      gainsRef.current.forEach((val, key) => {
          if (!audioLayers.find(l => l.id === key)) {
              val.disconnect();
@@ -324,20 +334,94 @@ export default function App() {
       });
   };
 
+  // --- SMART CACHING LOGIC ---
+  const startRecordingCache = () => {
+      if (!rendererRef.current?.canvas || !audioDestinationRef.current) return;
+
+      try {
+          // 1. Capture Canvas Stream (60fps preferred for smoothness)
+          const canvasStream = rendererRef.current.canvas.captureStream(60);
+          
+          // 2. Capture Audio Stream
+          const audioStream = audioDestinationRef.current.stream;
+          
+          // 3. Combine tracks
+          const combinedTracks = [
+              ...canvasStream.getVideoTracks(),
+              ...audioStream.getAudioTracks()
+          ];
+          const combinedStream = new MediaStream(combinedTracks);
+
+          // 4. Initialize Recorder
+          // Prefer higher bitrate for "Cached" quality
+          const options: MediaRecorderOptions = {
+              mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm',
+              videoBitsPerSecond: 8000000 // 8 Mbps
+          };
+
+          const recorder = new MediaRecorder(combinedStream, options);
+          recordedChunksRef.current = [];
+
+          recorder.ondataavailable = (e) => {
+              if (e.data.size > 0) {
+                  recordedChunksRef.current.push(e.data);
+              }
+          };
+
+          recorder.onstop = () => {
+              // Only save if we stopped intentionally (end of song) not interrupted
+              // Logic is handled in loop or handleSeek
+          };
+
+          recorder.start();
+          mediaRecorderRef.current = recorder;
+          setIsCaching(true);
+          console.log("Started caching playback...");
+      } catch (err) {
+          console.error("Failed to start caching", err);
+      }
+  };
+
+  const stopRecordingCache = (save: boolean) => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+          
+          if (save && recordedChunksRef.current.length > 0) {
+               const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+               setCachedBlob(blob);
+               console.log("Caching complete. Blob created size:", blob.size);
+          } else {
+              console.log("Caching discarded.");
+          }
+      }
+      setIsCaching(false);
+      mediaRecorderRef.current = null;
+  };
+
   const togglePlay = () => {
     initAudioEngine();
     if (!audioContextRef.current) return;
 
     if (isPlaying) {
       // Pause
+      // If we were caching, this invalidates the "perfect run", so discard.
+      if (isCaching) stopRecordingCache(false);
+
       audioContextRef.current.suspend();
       setIsPlaying(false);
     } else {
       // Play
       audioContextRef.current.resume();
       
-      // If sources aren't running (stopped or first play), start them
+      // If sources aren't running
       if (sourcesRef.current.size === 0) {
+          // If starting from the very beginning, try to cache this run
+          if (currentTime < 0.1) {
+              // Clear old cache
+              setCachedBlob(null); 
+              startRecordingCache();
+          }
+
           startAllSources(currentTime);
           startTimeRef.current = audioContextRef.current.currentTime - currentTime;
       }
@@ -348,10 +432,11 @@ export default function App() {
   const handleSeek = (time: number) => {
       if (!audioContextRef.current) return;
       
+      // Seeking invalidates current recording run
+      if (isCaching) stopRecordingCache(false);
+
       const wasPlaying = isPlaying;
-      
-      // Always stop and restart for precise seek
-      audioContextRef.current.suspend(); // Pause briefly while seeking logic runs
+      audioContextRef.current.suspend();
       stopAllSources();
       
       setCurrentTime(time);
@@ -360,9 +445,6 @@ export default function App() {
       if (wasPlaying) {
           startAllSources(time);
           audioContextRef.current.resume();
-      } else {
-          // If paused, just reset logic so next play starts here
-          // No op needed as startAllSources will be called in togglePlay
       }
   };
 
@@ -372,7 +454,6 @@ export default function App() {
       const dataArray = new Uint8Array(bufferLength);
       analyserRef.current.getByteFrequencyData(dataArray);
 
-      // Simple frequency bands
       const bassRange = dataArray.slice(0, 10);
       const midRange = dataArray.slice(10, 100);
       const highRange = dataArray.slice(100, 200);
@@ -390,12 +471,17 @@ export default function App() {
 
   const loop = () => {
     if (isPlaying && audioContextRef.current) {
-        // Sync time
         const now = audioContextRef.current.currentTime;
         let syncedTime = now - startTimeRef.current;
         
         if (syncedTime >= duration && duration > 0) {
             syncedTime = duration;
+            
+            // If we reached the end AND we were caching, save it!
+            if (isCaching) {
+                stopRecordingCache(true);
+            }
+
             setIsPlaying(false);
             stopAllSources();
             audioContextRef.current.suspend();
@@ -405,7 +491,6 @@ export default function App() {
         analyzeAudio();
     }
     
-    // Always render frame
     if (rendererRef.current) {
         rendererRef.current.drawFrame(currentTime, audioVisualizerData);
     }
@@ -416,17 +501,13 @@ export default function App() {
   useEffect(() => {
     requestRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(requestRef.current);
-  }, [currentTime, audioVisualizerData, isPlaying, duration]);
+  }, [currentTime, audioVisualizerData, isPlaying, duration, isCaching]);
 
 
   const handleJsonUpload = (jsonStr: string) => {
     try {
       const parsed = JSON.parse(jsonStr);
-      if (parsed.segments) {
-        setData(parsed);
-      } else {
-        alert("Invalid JSON format: missing 'segments'");
-      }
+      if (parsed.segments) setData(parsed);
     } catch (e) {
       alert("Error parsing JSON");
     }
@@ -435,11 +516,7 @@ export default function App() {
   const handleSrtUpload = (srtStr: string) => {
     try {
         const parsed = parseSrtToLyricData(srtStr);
-        if (parsed.segments.length > 0) {
-            setData(parsed);
-        } else {
-            alert("No valid segments found in SRT");
-        }
+        if (parsed.segments.length > 0) setData(parsed);
     } catch (e) {
         alert("Error parsing SRT");
     }
@@ -475,9 +552,8 @@ export default function App() {
                   if (project.lyricData && project.config) {
                       setData(project.lyricData);
                       setRendererConfig(project.config);
+                      setCachedBlob(null); // Clear cache on load
                       alert("Project loaded! Please re-add your audio layers.");
-                  } else {
-                      alert("Invalid project file structure.");
                   }
               }
           } catch(err) {
@@ -487,12 +563,31 @@ export default function App() {
       reader.readAsText(file);
   };
 
+  const downloadCachedVideo = () => {
+      if (!cachedBlob) return;
+      const url = URL.createObjectURL(cachedBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kinetic-lyric-video-quick.${cachedBlob.type.includes('mp4') ? 'mp4' : 'webm'}`;
+      a.click();
+      URL.revokeObjectURL(url);
+  };
+
+  // --- HIGH STABILITY RENDERING ENGINE ---
   const startRendering = async () => {
     if (audioLayers.length === 0) {
       alert("Please add at least one audio layer.");
       return;
     }
     
+    // Check if we can just use cache
+    if (cachedBlob) {
+        if (confirm("A cached version from your playback is available! \n\nDo you want to download it instantly (Instant) or render a high-quality version frame-by-frame (Slow)?\n\nClick OK for Instant, Cancel for Slow Render.")) {
+            downloadCachedVideo();
+            return;
+        }
+    }
+
     if (renderStatus.state !== 'idle') return;
 
     const resConfig = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
@@ -501,7 +596,7 @@ export default function App() {
 
     setRenderStatus({ state: 'analyzing', progress: 0 });
     
-    // Pause playback to free resources
+    // Stop live playback to free resources
     if (isPlaying && audioContextRef.current) {
         audioContextRef.current.suspend();
         setIsPlaying(false);
@@ -509,9 +604,13 @@ export default function App() {
 
     try {
       const sampleRate = 44100;
-      // Use standard sample rate for compatibility
-      const offlineCtx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+      const FPS = 30;
+      const totalFrames = Math.ceil(duration * FPS);
       
+      // PHASE 1: AUDIO RENDER & ANALYSIS (Fast, Offline)
+      console.log("Phase 1: Rendering Audio & Extracting Analysis...");
+      
+      const offlineCtx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
       const offlineMasterGain = offlineCtx.createGain();
       offlineMasterGain.connect(offlineCtx.destination);
       
@@ -521,6 +620,7 @@ export default function App() {
 
       const hasSolo = audioLayers.some(l => l.solo);
       
+      // Set up Audio Graph in Offline Context
       audioLayers.forEach(layer => {
            const effectiveMute = layer.muted || (hasSolo && !layer.solo);
            if (effectiveMute) return;
@@ -536,39 +636,53 @@ export default function App() {
            source.start(0);
       });
 
-      const FPS = 30;
-      const totalFrames = Math.floor(duration * FPS);
-      
+      // Prepare Array to hold FFT data for every frame
+      const analysisFrames: AudioVisualizerData[] = new Array(totalFrames);
+      const dataArray = new Uint8Array(offlineAnalyser.frequencyBinCount);
+      const frameDuration = 1 / FPS;
+
+      // Schedule Suspend for every frame to grab FFT data
+      for (let i = 0; i < totalFrames; i++) {
+           const t = i * frameDuration;
+           
+           // Safety: Do not schedule suspend past duration
+           if (t >= duration) break;
+
+           offlineCtx.suspend(t).then(async () => {
+               offlineAnalyser.getByteFrequencyData(dataArray);
+               const bass = dataArray.slice(0, 10).reduce((a,b)=>a+b,0) / 10 / 255;
+               const mid = dataArray.slice(10, 100).reduce((a,b)=>a+b,0) / 90 / 255;
+               const high = dataArray.slice(100, 200).reduce((a,b)=>a+b,0) / 100 / 255;
+               
+               analysisFrames[i] = {
+                   bass, mid, high,
+                   raw: new Uint8Array(dataArray) // Copy buffer
+               };
+               // IMPORTANT: Must resume to continue to next suspend point
+               await offlineCtx.resume();
+           }).catch((e) => console.error("Suspend error", e));
+      }
+
+      // Execute Audio Rendering
+      const renderedAudioBuffer = await offlineCtx.startRendering();
+      console.log("Phase 1 Complete. Audio rendered.");
+
+      // PHASE 2: VIDEO ENCODING (Batched, Backpressure Managed)
+      setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
+
       let muxer: any;
       if (exportFormat === 'mp4') {
         muxer = new Mp4Muxer({
             target: new Mp4ArrayBufferTarget(),
-            video: {
-                codec: 'avc',
-                width: VIDEO_WIDTH,
-                height: VIDEO_HEIGHT
-            },
-            audio: {
-                codec: 'aac',
-                numberOfChannels: 2,
-                sampleRate: sampleRate
-            },
+            video: { codec: 'avc', width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
+            audio: { codec: 'aac', numberOfChannels: 2, sampleRate: sampleRate },
             fastStart: false 
         });
       } else {
         muxer = new WebMMuxer({
             target: new WebMArrayBufferTarget(),
-            video: {
-                codec: 'V_VP9',
-                width: VIDEO_WIDTH,
-                height: VIDEO_HEIGHT,
-                frameRate: FPS
-            },
-            audio: {
-                codec: 'A_OPUS',
-                numberOfChannels: 2,
-                sampleRate: sampleRate
-            }
+            video: { codec: 'V_VP9', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, frameRate: FPS },
+            audio: { codec: 'A_OPUS', numberOfChannels: 2, sampleRate: sampleRate }
         });
       }
 
@@ -578,68 +692,49 @@ export default function App() {
       });
       
       const codecConfig: VideoEncoderConfig = exportFormat === 'mp4' 
-      ? {
-        codec: 'avc1.4d002a', // Main Profile Level 4.2 (Up to 1080p60)
-        width: VIDEO_WIDTH,
-        height: VIDEO_HEIGHT,
-        bitrate: 6_000_000 
-      } : {
-        codec: 'vp09.00.10.08',
-        width: VIDEO_WIDTH,
-        height: VIDEO_HEIGHT,
-        bitrate: 5_000_000
-      };
+      ? { codec: 'avc1.4d002a', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, bitrate: 8_000_000 } // Higher bitrate
+      : { codec: 'vp09.00.10.08', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, bitrate: 6_000_000 };
 
       videoEncoder.configure(codecConfig);
 
-      setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
-      
       const canvas = rendererRef.current?.canvas;
       if (!canvas) throw new Error("Canvas not found");
 
-      const dataArray = new Uint8Array(offlineAnalyser.frequencyBinCount);
-      const frameDuration = 1 / FPS;
-
-      // Schedule Suspend Callbacks
-      // We iterate and schedule ALL suspensions. 
-      // The callbacks will fire sequentially as offlineCtx processes.
+      // BATCH RENDERING LOOP
+      const BATCH_SIZE = 10; // Process frames in small batches to keep UI alive
+      
       for (let i = 0; i < totalFrames; i++) {
          const time = i * frameDuration;
+         const analysis = analysisFrames[i] || { bass: 0, mid: 0, high: 0, raw: new Uint8Array() };
+
+         // Draw Frame
+         rendererRef.current?.drawFrame(time, analysis);
          
-         offlineCtx.suspend(time).then(async () => {
-             // 1. Audio Analysis
-             offlineAnalyser.getByteFrequencyData(dataArray);
-             const bass = dataArray.slice(0, 10).reduce((a,b)=>a+b,0) / 10 / 255;
-             const mid = dataArray.slice(10, 100).reduce((a,b)=>a+b,0) / 90 / 255;
-             const high = dataArray.slice(100, 200).reduce((a,b)=>a+b,0) / 100 / 255;
-             
-             // 2. Draw Frame
-             // We use 'await' implicitly by synchronous execution but drawing is fast.
-             // If drawing is heavy, it blocks the callback thread.
-             rendererRef.current?.drawFrame(time, { bass, mid, high, raw: dataArray });
-             
-             // 3. Encode Frame
-             const frame = new VideoFrame(canvas, { timestamp: time * 1000000 });
-             // Keyframe every 2 seconds
-             const keyFrame = i % (FPS * 2) === 0;
-             videoEncoder.encode(frame, { keyFrame });
-             frame.close();
-             
-             // Update UI every 30 frames to avoid spamming state updates
-             if (i % 30 === 0) {
-                 setRenderStatus(prev => ({ ...prev, progress: i }));
-             }
-             
-             // 4. Resume Processing
-             offlineCtx.resume();
-         }).catch(e => console.error("Suspend error", e));
+         // Create VideoFrame from Canvas
+         const frame = new VideoFrame(canvas, { timestamp: time * 1_000_000 });
+         const keyFrame = i % (FPS * 2) === 0; // Keyframe every 2 seconds
+         
+         // Backpressure: If queue is full, wait for it to drain
+         if (videoEncoder.encodeQueueSize > 5) {
+             await videoEncoder.flush();
+         }
+
+         videoEncoder.encode(frame, { keyFrame });
+         frame.close(); // Important: Release GPU memory immediately
+         
+         // Update UI & Yield to Event Loop every batch
+         if (i % BATCH_SIZE === 0) {
+             setRenderStatus(prev => ({ ...prev, progress: i }));
+             await new Promise(resolve => setTimeout(resolve, 0)); // Yield to main thread
+         }
       }
       
-      // Start processing audio (which triggers the suspensions)
-      const renderedBuffer = await offlineCtx.startRendering();
-
-      // Final progress update
       setRenderStatus(prev => ({ ...prev, progress: totalFrames }));
+
+      // PHASE 3: FINALIZE
+      setRenderStatus({ state: 'encoding', progress: 100, totalFrames });
+      await videoEncoder.flush();
+      videoEncoder.close();
 
       // Audio Encoding
       const audioEncoder = new AudioEncoder({
@@ -652,14 +747,17 @@ export default function App() {
         codec: audioCodecString,
         numberOfChannels: 2,
         sampleRate: sampleRate,
-        bitrate: 128000
+        bitrate: 192000
       });
 
-      const numberOfFrames = renderedBuffer.length;
-      const numberOfChannels = renderedBuffer.numberOfChannels;
+      // Interleave Audio Data
+      const numberOfFrames = renderedAudioBuffer.length;
+      const numberOfChannels = renderedAudioBuffer.numberOfChannels;
       const interleaved = new Float32Array(numberOfFrames * numberOfChannels);
-      const channel0 = renderedBuffer.getChannelData(0);
-      const channel1 = renderedBuffer.getChannelData(1);
+      
+      // Safe channel getters
+      const channel0 = renderedAudioBuffer.getChannelData(0);
+      const channel1 = numberOfChannels > 1 ? renderedAudioBuffer.getChannelData(1) : channel0;
       
       for(let i=0; i<numberOfFrames; i++) {
           interleaved[i*2] = channel0[i];
@@ -679,9 +777,7 @@ export default function App() {
       await audioEncoder.flush();
       audioEncoder.close();
 
-      await videoEncoder.flush();
-      videoEncoder.close();
-      
+      // Finalize Muxer
       muxer.finalize();
       const { buffer } = muxer.target;
       const blob = new Blob([buffer], { type: exportFormat === 'mp4' ? 'video/mp4' : 'video/webm' });
@@ -696,12 +792,11 @@ export default function App() {
 
     } catch (e) {
       console.error("Export failed", e);
-      alert("Rendering failed. Please check the console for details.");
+      alert("Rendering failed. Try using a shorter audio clip or simpler settings.");
       setRenderStatus({ state: 'idle', progress: 0 });
     }
   };
   
-  // Calculate dynamic aspect ratio for the viewport
   const viewportResolution = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
   const aspectRatio = viewportResolution.width / viewportResolution.height;
 
@@ -715,9 +810,24 @@ export default function App() {
            <h1 className="font-black tracking-tighter text-lg">KINETIC<span className="text-cyan-400">FLOW</span></h1>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Center: Status Indicators */}
+        <div className="flex items-center gap-4">
+             {isCaching && (
+                 <div className="flex items-center gap-1.5 bg-red-950/50 border border-red-500/30 px-2 py-0.5 rounded-full animate-pulse">
+                     <div className="w-2 h-2 rounded-full bg-red-500" />
+                     <span className="text-[10px] text-red-200 font-bold uppercase tracking-wide">Caching for Export</span>
+                 </div>
+             )}
              
-             {/* Autosave Status */}
+             {cachedBlob && !isCaching && (
+                 <div className="flex items-center gap-1.5 bg-green-950/50 border border-green-500/30 px-2 py-0.5 rounded-full">
+                     <Zap size={10} className="text-green-400 fill-current" />
+                     <span className="text-[10px] text-green-200 font-bold uppercase tracking-wide">Instant Export Ready</span>
+                 </div>
+             )}
+        </div>
+
+        <div className="flex items-center gap-2">
              {lastSaved && (
                 <div className="text-[10px] text-gray-500 mr-2 flex items-center gap-1 animate-in fade-in duration-500">
                     <Check size={10} className="text-green-500"/>
@@ -725,7 +835,6 @@ export default function App() {
                 </div>
              )}
 
-             {/* Project Actions */}
              <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 mr-4">
                   <button 
                     onClick={handleResetProject}
@@ -750,30 +859,35 @@ export default function App() {
                   </label>
              </div>
 
-             {/* Export Actions */}
              <div className="flex items-center gap-2 bg-neutral-800 p-1 rounded-md border border-white/5">
-                 <select 
-                   value={exportFormat}
-                   onChange={(e) => setExportFormat(e.target.value as any)}
-                   className="bg-transparent text-xs font-bold text-gray-300 outline-none px-2 py-1"
-                   disabled={renderStatus.state !== 'idle'}
-                 >
-                    <option value="mp4">MP4 (H.264)</option>
-                    <option value="webm">WEBM (VP9)</option>
-                 </select>
+                 {!cachedBlob && (
+                    <select 
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value as any)}
+                        className="bg-transparent text-xs font-bold text-gray-300 outline-none px-2 py-1"
+                        disabled={renderStatus.state !== 'idle'}
+                        >
+                        <option value="mp4">MP4</option>
+                        <option value="webm">WEBM</option>
+                    </select>
+                 )}
                  <button
                     onClick={startRendering}
                     disabled={renderStatus.state !== 'idle' || audioLayers.length === 0}
-                    className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all"
+                    className={`${cachedBlob ? 'bg-green-600 hover:bg-green-500' : 'bg-cyan-600 hover:bg-cyan-500'} disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all`}
+                    title={cachedBlob ? "Instant Download available" : "High quality render"}
                  >
                     {renderStatus.state === 'idle' ? (
                         <>
-                            <Video size={14} /> EXPORT
+                            {cachedBlob ? <Zap size={14} fill="currentColor"/> : <Video size={14} />} 
+                            {cachedBlob ? 'INSTANT EXPORT' : 'EXPORT'}
                         </>
                     ) : (
                         <>
                             <Loader2 size={14} className="animate-spin" /> 
-                            {renderStatus.state === 'analyzing' ? 'ANALYZING' : `${Math.round((renderStatus.progress / (renderStatus.totalFrames || 1)) * 100)}%`}
+                            {renderStatus.state === 'analyzing' ? 'PROCESSING AUDIO' : 
+                             renderStatus.state === 'encoding' ? 'ENCODING' :
+                             `${Math.round((renderStatus.progress / (renderStatus.totalFrames || 1)) * 100)}%`}
                         </>
                     )}
                  </button>
@@ -784,7 +898,6 @@ export default function App() {
       {/* MAIN CONTENT GRID */}
       <div className="flex-1 flex overflow-hidden">
           
-          {/* SIDEBAR (INSPECTOR) */}
           <div className="w-96 bg-neutral-900 border-r border-white/5 flex flex-col shrink-0 z-10">
               <SettingsPanel 
                  config={rendererConfig} 
@@ -802,9 +915,7 @@ export default function App() {
               />
           </div>
 
-          {/* VIEWPORT (PROGRAM MONITOR) */}
           <div className="flex-1 bg-neutral-950 relative flex flex-col min-w-0">
-               {/* Canvas Container */}
                <div className="flex-1 flex items-center justify-center p-8 overflow-hidden bg-[radial-gradient(circle_at_center,_#1a1a1a_1px,_transparent_1px)] bg-[length:20px_20px]">
                    <div 
                       className="relative shadow-2xl border border-white/10"
@@ -823,7 +934,6 @@ export default function App() {
                           isPlaying={isPlaying}
                        />
                        
-                       {/* Overlay info */}
                        {audioLayers.length === 0 && (
                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                                <div className="text-center">
@@ -835,7 +945,6 @@ export default function App() {
                    </div>
                </div>
 
-               {/* Transport Bar (Bottom of Viewport) */}
                <div className="shrink-0 z-20">
                     <Controls
                         isPlaying={isPlaying}
