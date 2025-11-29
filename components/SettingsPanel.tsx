@@ -712,7 +712,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                              <SelectInput 
                                 label="Style" 
                                 value={config.background.proceduralStyle || 'grid'} 
-                                options={['grid', 'stars', 'plasma', 'tunnel', 'matrix']} 
+                                options={['grid', 'stars', 'plasma', 'tunnel', 'matrix', 'gradient-wave', 'hexagons', 'kaleidoscope', 'dna']} 
                                 onChange={(v) => updateNested('background', 'proceduralStyle', v)} 
                              />
                              <div className="pt-2">
@@ -782,21 +782,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="In" 
                    value={config.animation.entrance} 
-                   options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch']} 
+                   options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral']} 
                    onChange={(v) => updateNested('animation', 'entrance', v)} 
                 />
                 <SelectInput 
                    label="Active" 
                    value={config.animation.active} 
-                   options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate']} 
+                   options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash']} 
                    onChange={(v) => updateNested('animation', 'active', v)} 
                 />
                 <SelectInput 
                    label="Out" 
                    value={config.animation.exit} 
-                   options={['fade', 'slide', 'slam', 'zoom', 'blur', 'glitch']} 
+                   options={['fade', 'slide', 'slam', 'zoom', 'blur', 'glitch', 'drop', 'spiral']} 
                    onChange={(v) => updateNested('animation', 'exit', v)} 
                 />
+              </div>
+            </section>
+
+             {/* Camera */}
+             <section>
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <Camera size={14}/> Camera Movement
+              </h3>
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 grid grid-cols-2 gap-x-4 gap-y-2">
+                   <ToggleInput label="Shake" value={config.camera.shake} onChange={(v) => updateNested('camera', 'shake', v)} />
+                   <ToggleInput label="Zoom Beat" value={config.camera.zoomBeat} onChange={(v) => updateNested('camera', 'zoomBeat', v)} />
+                   <ToggleInput label="Rotate" value={config.camera.rotate} onChange={(v) => updateNested('camera', 'rotate', v)} />
+                   <ToggleInput label="Sway" value={config.camera.sway} onChange={(v) => updateNested('camera', 'sway', v)} />
+                   <ToggleInput label="Hard Kick" value={config.camera.hardKick} onChange={(v) => updateNested('camera', 'hardKick', v)} />
               </div>
             </section>
 
@@ -827,6 +841,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <ToggleInput label="Mirror" value={config.effects.mirror} onChange={(v) => updateNested('effects', 'mirror', v)} />
                     <ToggleInput label="Inv. Beat" value={config.effects.invert} onChange={(v) => updateNested('effects', 'invert', v)} />
                     <ToggleInput label="Distort" value={config.effects.barrelDistortion} onChange={(v) => updateNested('effects', 'barrelDistortion', v)} />
+                    <ToggleInput label="Mosaic" value={config.effects.mosaic} onChange={(v) => updateNested('effects', 'mosaic', v)} />
+                    <ToggleInput label="Sepia" value={config.effects.sepia} onChange={(v) => updateNested('effects', 'sepia', v)} />
+                    <ToggleInput label="Grayscale" value={config.effects.grayscale} onChange={(v) => updateNested('effects', 'grayscale', v)} />
                  </div>
               </div>
             </section>

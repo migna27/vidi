@@ -37,12 +37,12 @@ export interface RenderStatus {
   totalFrames?: number;
 }
 
-export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch';
-export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate';
+export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral';
+export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash';
 export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
-export type ProceduralStyle = 'stars' | 'grid' | 'plasma' | 'tunnel' | 'matrix';
+export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
 
 export interface KeyframeValues {
@@ -119,6 +119,9 @@ export interface RendererConfig {
     mirror: boolean;
     invert: boolean;
     barrelDistortion: boolean;
+    mosaic: boolean; // Pixelate effect
+    sepia: boolean;
+    grayscale: boolean;
   };
   particles: {
     enabled: boolean;
@@ -131,6 +134,8 @@ export interface RendererConfig {
     shake: boolean;
     zoomBeat: boolean;
     rotate: boolean;
+    sway: boolean; // Gentle panning
+    hardKick: boolean; // Aggressive Z-punch
   };
   sectionStyles: {
     verse: SectionStyle;
