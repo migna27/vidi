@@ -3,10 +3,81 @@ import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
-import { LyricData, RenderStatus, AudioVisualizerData } from './types';
-import { UploadCloud, AlertCircle } from 'lucide-react';
+import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word } from './types';
 // @ts-ignore
-import { Muxer, ArrayBufferTarget } from 'webm-muxer';
+import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
+// @ts-ignore
+import { Muxer as Mp4Muxer, ArrayBufferTarget as Mp4ArrayBufferTarget } from 'mp4-muxer';
+
+// Helper to parse SRT timestamp "00:00:12,345" to seconds
+const parseSrtTimestamp = (timestamp: string): number => {
+  const parts = timestamp.split(':');
+  const secondsParts = parts[2].split(',');
+  
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  const seconds = parseInt(secondsParts[0], 10);
+  const milliseconds = parseInt(secondsParts[1], 10);
+
+  return (hours * 3600) + (minutes * 60) + seconds + (milliseconds / 1000);
+};
+
+// Helper to parse SRT string to LyricData
+const parseSrtToLyricData = (srtContent: string): LyricData => {
+  const blocks = srtContent.trim().split(/\n\s*\n/); // Split by empty lines
+  const segments: Segment[] = [];
+  
+  blocks.forEach((block, index) => {
+    const lines = block.split('\n');
+    if (lines.length < 2) return;
+
+    // Find the timestamp line (usually line 2, but sometimes line 1 if index is missing)
+    let timeLineIndex = lines.findIndex(l => l.includes('-->'));
+    if (timeLineIndex === -1) return;
+
+    const timeLine = lines[timeLineIndex];
+    const [startStr, endStr] = timeLine.split('-->').map(s => s.trim());
+    
+    const start = parseSrtTimestamp(startStr);
+    const end = parseSrtTimestamp(endStr);
+    
+    // The text is everything after the timestamp line
+    const textLines = lines.slice(timeLineIndex + 1);
+    const text = textLines.join(' ').trim();
+    
+    if (!text) return;
+
+    // Word interpolation: Distribute words evenly across the duration
+    const wordsRaw = text.split(/\s+/);
+    const duration = end - start;
+    const wordDuration = duration / wordsRaw.length;
+    
+    const words: Word[] = wordsRaw.map((wordText, wIdx) => {
+      const wordStart = start + (wIdx * wordDuration);
+      const wordEnd = wordStart + wordDuration;
+      return {
+        word: wordText,
+        start: wordStart,
+        end: wordEnd,
+        probability: 1.0, // Default for manual subs
+        line_number: index % 2 // Alternate visual lines slightly
+      };
+    });
+
+    segments.push({
+      id: index.toString(),
+      start,
+      end,
+      text,
+      words
+    });
+  });
+
+  return {
+    createdAt: new Date().toISOString(),
+    segments
+  };
+};
 
 export default function App() {
   const [data, setData] = useState<LyricData>(DEFAULT_LYRICS);
@@ -15,6 +86,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
   
   // Rendering State
   const [renderStatus, setRenderStatus] = useState<RenderStatus>({ state: 'idle', progress: 0 });
@@ -63,7 +135,6 @@ export default function App() {
       if (audioRef.current) {
          if (!audioRef.current.paused) {
              time = audioRef.current.currentTime;
-             // Update React state for UI slider (maybe throttle this in production, but ok for now)
              setCurrentTime(time);
          } else if (isPlaying && !audioUrl) {
              // Demo mode fallback
@@ -125,13 +196,12 @@ export default function App() {
     } else {
         // Draw one static frame when paused to ensure updates on seek
         if (rendererRef.current) {
-            // We pass zero energy or last energy? Zero is safer for paused state
             rendererRef.current.drawFrame(currentTime, { bass: 0, mid: 0, high: 0, raw: new Uint8Array(0) });
         }
     }
 
     return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [isPlaying, renderStatus.state, audioUrl, duration, currentTime]); // Note: currentTime dep might cause restart, but since we rely on ref loop for active play, it's mostly for pause updates.
+  }, [isPlaying, renderStatus.state, audioUrl, duration, currentTime]);
 
   // Effect to handle seeking redraw specifically when paused
   useEffect(() => {
@@ -178,259 +248,307 @@ export default function App() {
       }
     } catch (err) {
       setError("Failed to parse JSON.");
+      alert("Invalid JSON file");
+    }
+  };
+
+  const handleSrtUpload = (srtStr: string) => {
+    try {
+      const lyricData = parseSrtToLyricData(srtStr);
+      if (lyricData.segments.length > 0) {
+        setData(lyricData);
+        setCurrentTime(0);
+        if (audioRef.current) audioRef.current.currentTime = 0;
+        const lastSeg = lyricData.segments[lyricData.segments.length - 1];
+        if (lastSeg && !audioUrl) setDuration(lastSeg.end + 5);
+        setError(null);
+      } else {
+        throw new Error("No segments found in SRT.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Failed to parse SRT.");
+      alert("Invalid SRT file");
     }
   };
 
   const handleAudioUpload = (file: File) => {
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.load();
+    }
     setIsPlaying(false);
-    setCurrentTime(0);
-  };
-
-  const analyzeAudioBuffer = async (audioBuffer: AudioBuffer, fps: number): Promise<AudioVisualizerData[]> => {
-      const channelData = audioBuffer.getChannelData(0);
-      const sampleRate = audioBuffer.sampleRate;
-      const samplesPerFrame = Math.floor(sampleRate / fps);
-      const totalFrames = Math.ceil(audioBuffer.duration * fps);
-      
-      const analysisFrames: AudioVisualizerData[] = [];
-
-      for(let i=0; i<totalFrames; i++) {
-          const startSample = i * samplesPerFrame;
-          const endSample = Math.min(startSample + samplesPerFrame, channelData.length);
-          
-          let sumSq = 0;
-          for(let j=startSample; j<endSample; j++) {
-              sumSq += channelData[j] * channelData[j];
-          }
-          const rms = Math.sqrt(sumSq / (endSample - startSample)) * 10; 
-          
-          const bass = Math.min(1, rms);
-          const mid = Math.min(1, rms * 0.8 + Math.random() * 0.2 * rms);
-          const high = Math.min(1, rms * 0.6 + Math.random() * 0.3 * rms);
-
-          const raw = new Uint8Array(64);
-          for(let k=0; k<64; k++) {
-              const value = (rms * 255) * (1 - k/64);
-              raw[k] = Math.min(255, value * (0.8 + Math.random()*0.4));
-          }
-
-          analysisFrames.push({ bass, mid, high, raw });
-      }
-
-      return analysisFrames;
   };
 
   const startRendering = async () => {
-    if (!rendererRef.current?.canvas || !audioUrl) {
-        setError("Audio required for rendering.");
-        return;
+    if (!audioUrl || !rendererRef.current || !data.segments.length) {
+      alert("Please load audio and lyrics first.");
+      return;
     }
+    setIsPlaying(false);
+    setRenderStatus({ state: 'analyzing', progress: 0 });
 
     try {
-        setRenderStatus({ state: 'analyzing', progress: 0 });
-        setIsPlaying(false);
-        if(audioRef.current) audioRef.current.pause();
-
+        // 1. Prepare Audio Buffer
         const response = await fetch(audioUrl);
         const arrayBuffer = await response.arrayBuffer();
         const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-        const FPS = 30; 
-        const analysisData = await analyzeAudioBuffer(audioBuffer, FPS);
+        // 2. Prepare Offline Context for Analysis (FFT)
+        // We will extract FFT data frame-by-frame
+        const offlineCtx = new OfflineAudioContext(
+            audioBuffer.numberOfChannels,
+            audioBuffer.length,
+            audioBuffer.sampleRate
+        );
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        const analyser = offlineCtx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.8;
+        source.connect(analyser);
+        analyser.connect(offlineCtx.destination);
+        source.start(0);
 
-        setRenderStatus({ state: 'rendering', progress: 0, totalFrames: analysisData.length });
+        // 3. Setup Muxer & Encoders
+        const width = 1920;
+        const height = 1080;
+        const fps = 30;
+        const duration = audioBuffer.duration;
+        const totalFrames = Math.floor(duration * fps);
+        const frameInterval = 1 / fps;
 
-        const muxer = new Muxer({
-            target: new ArrayBufferTarget(),
-            video: {
-                codec: 'V_VP9',
-                width: 1920,
-                height: 1080,
-                frameRate: FPS
-            },
-            audio: {
-                codec: 'A_OPUS',
-                numberOfChannels: audioBuffer.numberOfChannels,
-                sampleRate: audioBuffer.sampleRate
-            }
-        });
+        let muxer: any;
+        let videoEncoder: VideoEncoder;
+        let audioEncoder: any;
 
-        const videoEncoder = new VideoEncoder({
-            output: (chunk: any, meta: any) => muxer.addVideoChunk(chunk, meta),
-            error: (e: any) => console.error(e)
-        });
+        // Configuration based on format
+        const isMp4 = exportFormat === 'mp4';
+        const videoCodec = isMp4 ? 'avc1.4d002a' : 'vp09.00.10.08'; 
+        const audioCodec = isMp4 ? 'mp4a.40.2' : 'opus';
+        
+        if (isMp4) {
+            muxer = new Mp4Muxer({
+                target: new Mp4ArrayBufferTarget(),
+                video: { codec: 'avc', width, height },
+                audio: { codec: 'aac', numberOfChannels: audioBuffer.numberOfChannels, sampleRate: audioBuffer.sampleRate },
+                fastStart: false
+            });
+        } else {
+            muxer = new WebMMuxer({
+                target: new WebMArrayBufferTarget(),
+                video: { codec: 'V_VP9', width, height, frameRate: fps },
+                audio: { codec: 'A_OPUS', numberOfChannels: audioBuffer.numberOfChannels, sampleRate: audioBuffer.sampleRate }
+            });
+        }
 
-        videoEncoder.configure({
-            codec: 'vp09.00.10.08',
-            width: 1920,
-            height: 1080,
-            bitrate: 10_000_000
+        videoEncoder = new VideoEncoder({
+            output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+            error: (e) => console.error("Video Encoder Error", e)
         });
         
-        const audioEncoder = new AudioEncoder({
-            output: (chunk: any, meta: any) => muxer.addAudioChunk(chunk, meta),
-            error: (e: any) => console.error(e)
+        await videoEncoder.configure({
+            codec: videoCodec,
+            width,
+            height,
+            bitrate: 8_000_000, // 8 Mbps
+            framerate: fps
         });
-        audioEncoder.configure({
-            codec: 'opus',
+
+        // @ts-ignore
+        audioEncoder = new AudioEncoder({
+            output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+            error: (e) => console.error("Audio Encoder Error", e)
+        });
+        
+        await audioEncoder.configure({
+            codec: audioCodec,
             numberOfChannels: audioBuffer.numberOfChannels,
             sampleRate: audioBuffer.sampleRate,
-            bitrate: 128000
+            bitrate: 192_000
         });
 
-        const numberOfChannels = audioBuffer.numberOfChannels;
-        const totalSamples = audioBuffer.length;
-        const chunkSize = 1024 * 64; 
+        // 4. Encode Audio Track
+        setRenderStatus({ state: 'encoding', progress: 0 });
         
-        for (let offset = 0; offset < totalSamples; offset += chunkSize) {
-            const size = Math.min(chunkSize, totalSamples - offset);
-            const destBuffer = new Float32Array(size * numberOfChannels);
-            for(let ch=0; ch<numberOfChannels; ch++) {
-                const chData = audioBuffer.getChannelData(ch);
-                for(let i=0; i<size; i++) {
-                    destBuffer[ch * size + i] = chData[offset + i];
-                }
+        // Chunk and encode audio
+        const numberOfChannels = audioBuffer.numberOfChannels;
+        const length = audioBuffer.length;
+        const sampleRate = audioBuffer.sampleRate;
+        const chunkSize = sampleRate; // 1 second chunks
+
+        for (let frameOffset = 0; frameOffset < length; frameOffset += chunkSize) {
+            const currentChunkSize = Math.min(chunkSize, length - frameOffset);
+            const dataBuffer = new Float32Array(currentChunkSize * numberOfChannels);
+            
+            // Interleave logic or Planar copy? AudioData 'f32-planar' expects channel planes
+            let offset = 0;
+            for (let c = 0; c < numberOfChannels; c++) {
+                const channelData = audioBuffer.getChannelData(c);
+                dataBuffer.set(channelData.slice(frameOffset, frameOffset + currentChunkSize), offset);
+                offset += currentChunkSize;
             }
             
+            // @ts-ignore
             const audioData = new AudioData({
                 format: 'f32-planar',
-                sampleRate: audioBuffer.sampleRate,
-                numberOfFrames: size,
-                numberOfChannels: numberOfChannels,
-                timestamp: (offset / audioBuffer.sampleRate) * 1_000_000, 
-                data: destBuffer
+                sampleRate,
+                numberOfFrames: currentChunkSize,
+                numberOfChannels,
+                timestamp: (frameOffset / sampleRate) * 1e6,
+                data: dataBuffer
             });
             
             audioEncoder.encode(audioData);
             audioData.close();
         }
 
-        const totalFrames = analysisData.length;
+        // 5. Render Video Frames with Synchronized Analysis
+        setRenderStatus({ state: 'rendering', progress: 0 });
         
+        const fftBuffer = new Uint8Array(analyser.frequencyBinCount);
+        
+        // We schedule suspends for every frame to grab FFT data
         for (let i = 0; i < totalFrames; i++) {
-            const time = i / FPS;
-            const frameData = analysisData[i];
+            const t = i * frameInterval;
             
-            rendererRef.current.drawFrame(time, frameData);
-            
-            await new Promise(r => setTimeout(r, 0));
+            // Schedule a suspend at the exact frame time
+            // The callbacks will be executed sequentially as the context renders
+            offlineCtx.suspend(t).then(async () => {
+                analyser.getByteFrequencyData(fftBuffer);
+                
+                // Calculate buckets
+                 let bass = 0, mid = 0, high = 0;
+                  const bLen = fftBuffer.length;
+                  for (let k = 0; k < bLen; k++) {
+                      const val = fftBuffer[k] / 255.0;
+                      if (k < 5) bass += val;
+                      else if (k < 20) mid += val;
+                      else high += val;
+                  }
+                  bass /= 5;
+                  mid /= 15;
+                  high /= (bLen > 20 ? bLen - 20 : 1);
 
-            const frame = new VideoFrame(rendererRef.current.canvas, {
-                timestamp: time * 1_000_000 
+                  const analysis: AudioVisualizerData = {
+                      bass,
+                      mid,
+                      high,
+                      raw: fftBuffer
+                  };
+
+                  // Draw
+                  if (rendererRef.current) {
+                      rendererRef.current.drawFrame(t, analysis);
+                      
+                      // Encode Video Frame
+                      const canvas = rendererRef.current.canvas;
+                      if (canvas) {
+                          const frame = new VideoFrame(canvas, { timestamp: t * 1e6 });
+                          
+                          // Keyframe every 2 seconds
+                          const keyFrame = i % (fps * 2) === 0;
+                          videoEncoder.encode(frame, { keyFrame });
+                          frame.close();
+                      }
+                  }
+                  
+                  // Update Progress
+                  setRenderStatus(prev => ({ ...prev, progress: (i / totalFrames) * 100 }));
+                  
+                  // Resume audio processing to proceed to next suspend
+                  offlineCtx.resume();
             });
-
-            videoEncoder.encode(frame, { keyFrame: i % 150 === 0 });
-            frame.close();
-
-            if (i % 10 === 0) {
-                setRenderStatus(prev => ({ ...prev, progress: Math.round((i / totalFrames) * 100) }));
-                await new Promise(r => setTimeout(r, 0)); 
-            }
         }
 
+        // Start the offline processing. This will trigger all the suspend callbacks in order.
+        await offlineCtx.startRendering();
+        
+        // Flush encoders to finish pending frames
         await videoEncoder.flush();
         await audioEncoder.flush();
+        
+        // Finalize File
         muxer.finalize();
 
         const { buffer } = muxer.target;
-        const blob = new Blob([buffer], { type: 'video/webm' });
+        const blob = new Blob([buffer], { type: isMp4 ? 'video/mp4' : 'video/webm' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `kinetic-lyrics-${Date.now()}.webm`;
+        a.download = isMp4 ? 'kinetic-lyrics.mp4' : 'kinetic-lyrics.webm';
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        setRenderStatus({ state: 'done', progress: 100 });
+        setTimeout(() => setRenderStatus({ state: 'idle', progress: 0 }), 2000);
 
-        setRenderStatus({ state: 'idle', progress: 0 });
-        videoEncoder.close();
-        audioEncoder.close();
-
-    } catch (e: any) {
+    } catch (e) {
         console.error(e);
-        setError(`Rendering Failed: ${e.message}. Ensure you are on a modern browser (Chrome/Edge/Desktop).`);
+        setError("Rendering failed. See console.");
         setRenderStatus({ state: 'idle', progress: 0 });
     }
   };
 
-  const isProcessing = renderStatus.state !== 'idle';
-
   return (
-    <div className="bg-black min-h-screen text-white overflow-hidden flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
-      
-      <audio
-        ref={audioRef}
-        src={audioUrl || undefined}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-        crossOrigin="anonymous"
-      />
-
-      <div className="relative flex-1 flex flex-col items-center justify-center bg-[#050505]">
+    <div className="w-full h-screen bg-black overflow-hidden flex flex-col">
+      <div className="flex-1 relative">
+        <CanvasVideoRenderer ref={rendererRef} data={data} />
         
-        <div className="z-10 w-full h-full max-w-7xl mx-auto px-4 pb-32 pt-10 flex flex-col items-center justify-center">
-          
-          {error && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-900/80 border border-red-500 text-red-100 px-4 py-2 rounded-lg flex items-center gap-2 z-50">
-              <AlertCircle size={18} />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {!audioUrl && currentTime === 0 && !isPlaying && !isProcessing && (
-            <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-              <div className="text-center p-8 border border-white/10 bg-black/40 backdrop-blur-sm rounded-2xl pointer-events-auto">
-                 <UploadCloud className="w-12 h-12 mx-auto mb-4 text-cyan-500 opacity-80" />
-                 <h2 className="text-2xl font-bold mb-2">Ready to Render</h2>
-                 <p className="text-gray-400 max-w-md">
-                   Upload your JSON & Audio.<br/>
-                   Click <span className="text-cyan-400 font-bold">Render Video</span> for high-quality export.
-                 </p>
-              </div>
-            </div>
-          )}
-
-          {isProcessing && (
-             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
-                <div className="w-64">
-                    <div className="flex justify-between text-sm mb-2 text-cyan-400 font-bold uppercase tracking-widest">
-                        <span>{renderStatus.state}</span>
-                        <span>{renderStatus.progress}%</span>
-                    </div>
-                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                        <div 
-                           className="h-full bg-cyan-500 transition-all duration-300"
-                           style={{ width: `${renderStatus.progress}%` }}
-                        ></div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-4 text-center">
-                        Generating Frame-by-Frame (WebM)
-                    </p>
-                </div>
-             </div>
-          )}
-
-          <div className="relative w-full aspect-video shadow-2xl border border-white/5 rounded-lg overflow-hidden bg-black">
-              <CanvasVideoRenderer 
-                  ref={rendererRef}
-                  data={data} 
-              />
+        {/* Loading/Error Overlay */}
+        {(renderStatus.state !== 'idle' || error) && (
+          <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center flex-col gap-4 backdrop-blur-sm">
+             {error ? (
+                <div className="text-red-500 font-bold text-xl">{error}</div>
+             ) : (
+                <>
+                  <div className="text-cyan-400 font-bold text-2xl animate-pulse">
+                     {renderStatus.state === 'analyzing' && 'Analyzing Audio...'}
+                     {renderStatus.state === 'encoding' && 'Encoding Audio...'}
+                     {renderStatus.state === 'rendering' && `Rendering Video: ${Math.round(renderStatus.progress)}%`}
+                     {renderStatus.state === 'done' && 'Download Ready!'}
+                  </div>
+                  <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-cyan-400 transition-all duration-300"
+                      style={{ width: `${renderStatus.progress}%` }}
+                    />
+                  </div>
+                </>
+             )}
           </div>
-
-        </div>
+        )}
       </div>
 
-      <Controls 
+      <audio 
+        ref={audioRef}
+        onEnded={() => setIsPlaying(false)}
+        onTimeUpdate={() => {
+           if (audioRef.current && isPlaying) {
+             setCurrentTime(audioRef.current.currentTime);
+           }
+        }}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        className="hidden"
+      />
+
+      <Controls
         isPlaying={isPlaying}
         onTogglePlay={togglePlay}
         onJsonUpload={handleJsonUpload}
+        onSrtUpload={handleSrtUpload}
         onAudioUpload={handleAudioUpload}
         currentTime={currentTime}
         duration={duration}
         onSeek={handleSeek}
         onRender={startRendering}
-        isRendering={isProcessing}
+        isRendering={renderStatus.state !== 'idle'}
+        exportFormat={exportFormat}
+        onExportFormatChange={setExportFormat}
       />
     </div>
   );

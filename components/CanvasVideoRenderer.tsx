@@ -82,12 +82,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // --- 0. Pre-Calculation: Active Segment ---
     const activeSegmentIndex = data.segments.findIndex(
-      (seg) => time >= seg.start - 1.0 && time <= seg.end + 1.0
+      (seg) => time >= seg.start - 1.0 && time <= seg.end + 2.0
     );
     const activeSegment = activeSegmentIndex !== -1 ? data.segments[activeSegmentIndex] : null;
 
     // --- 1. Background (Screen Space) ---
-    // Drawn before camera transform to ensure full coverage
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -107,46 +106,47 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // --- 2. Camera Setup ---
-    ctx.save(); // Save screen space state
+    ctx.save();
 
     // Camera Parameters
     // A. Zoom: Pulse on Bass + Slow Breathing
-    const baseZoom = 1.05; // Slight overscan to hide edges during rotation
-    const beatZoom = bass * 0.08; 
+    const baseZoom = 1.05; 
+    const beatZoom = bass * 0.1; 
     const breathZoom = Math.sin(time * 0.5) * 0.02;
     const totalZoom = baseZoom + beatZoom + breathZoom;
 
     // B. Rotation: Tilt based on segment index + slow drift
-    // Even segments tilt left, Odd segments tilt right
     let targetTilt = 0;
     if (activeSegmentIndex !== -1) {
-        targetTilt = (activeSegmentIndex % 2 === 0 ? 1 : -1) * 0.03; // ~1.7 degrees
+        targetTilt = (activeSegmentIndex % 2 === 0 ? 1 : -1) * 0.03; 
     }
     const driftRot = Math.sin(time * 0.2) * 0.015;
-    const totalRot = targetTilt + driftRot;
+    
+    // Camera Shake on heavy bass
+    const shakeX = bass > 0.6 ? (Math.random() - 0.5) * bass * 40 : 0;
+    const shakeY = bass > 0.6 ? (Math.random() - 0.5) * bass * 40 : 0;
+    const shakeRot = bass > 0.7 ? (Math.random() - 0.5) * 0.02 : 0;
 
-    // C. Pan: Drift X/Y
-    const panX = Math.sin(time * 0.3) * 30;
-    const panY = Math.cos(time * 0.4) * 20;
+    const totalRot = targetTilt + driftRot + shakeRot;
 
-    // Apply Transform: Move to center -> Rotate/Scale -> Move back (with pan)
+    // C. Pan
+    const panX = Math.sin(time * 0.3) * 30 + shakeX;
+    const panY = Math.cos(time * 0.4) * 20 + shakeY;
+
+    // Apply Transform
     ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
     ctx.rotate(totalRot);
     ctx.scale(totalZoom, totalZoom);
     ctx.translate(-CANVAS_WIDTH / 2 - panX, -CANVAS_HEIGHT / 2 - panY);
 
-    // --- 3. World Elements (Particles, Waves, Text) ---
+    // --- 3. World Elements ---
 
-    // Particles
+    // Particles (Background)
     particlesRef.current.forEach(p => {
-        // Position logic
         let nx = p.x + (p.vx * time * 60 * 0.5); 
         let ny = p.y + (p.vy * time * 60 * 0.5);
-        
-        // Audio reactivity: Particles float up/down with Mid range
-        ny -= mid * 50 * Math.sin(time + p.id);
+        ny -= mid * 50 * Math.sin(time + p.id); // React to Mid
 
-        // Wrap around
         nx = ((nx % CANVAS_WIDTH) + CANVAS_WIDTH) % CANVAS_WIDTH;
         ny = ((ny % CANVAS_HEIGHT) + CANVAS_HEIGHT) % CANVAS_HEIGHT;
 
@@ -160,20 +160,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         ctx.globalAlpha = 1.0;
     });
 
-    // Wave Effect
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(-100, CANVAS_HEIGHT / 2); // Start off-screen
-    for (let x = -100; x <= CANVAS_WIDTH + 100; x += 40) {
-        const yOffset = Math.sin(x * 0.005 + time * 2) * (50 + bass * 120);
-        const yOffset2 = Math.cos(x * 0.01 - time) * (30 + mid * 60);
-        ctx.lineTo(x, CANVAS_HEIGHT / 2 + yOffset + yOffset2);
-    }
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + bass * 0.1})`;
-    ctx.lineWidth = 2 + bass * 5;
-    ctx.stroke();
-    ctx.restore();
-
     // Typography
     if (activeSegment) {
       const lines = getLines(activeSegment.id, activeSegment.words);
@@ -185,7 +171,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       ctx.font = `900 ${baseFontSize}px "Montserrat", sans-serif`;
 
       lines.forEach((lineWords, lineIndex) => {
-         // Measure for centering
+         // Measure
          let lineWidth = 0;
          const wordSpacings: number[] = [];
          
@@ -204,40 +190,125 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              const isPast = time > word.end;
              const isFuture = time < word.start;
              const isActive = !isPast && !isFuture;
+             
+             // Use word hash for deterministic random effect selection
+             const wordHash = (word.start * 1000 + wIdx) % 3; 
 
              ctx.save();
              ctx.translate(currentX + width / 2, currentY);
 
              if (isActive) {
-               ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
-               ctx.shadowBlur = 40 + (bass * 30); 
-               ctx.fillStyle = "#22d3ee";
-               // Active Word Pop
-               const scale = 1.1 + (bass * 0.15);
+               // --- ACTIVE WORD ---
+               
+               // Audio-Reactive Glow
+               const glowIntensity = 30 + (bass * 60) + (mid * 40);
+               ctx.shadowColor = `rgba(56, 189, 248, ${0.7 + bass * 0.3})`;
+               ctx.shadowBlur = glowIntensity; 
+               
+               // Fill Color Pulse
+               const lightness = 50 + (bass * 40);
+               ctx.fillStyle = `hsl(190, 90%, ${lightness}%)`;
+               
+               // Active "Pop" + Jitter
+               const jitterX = (Math.random() - 0.5) * bass * 10;
+               const jitterY = (Math.random() - 0.5) * bass * 10;
+               const scale = 1.1 + (bass * 0.15) + (mid * 0.05);
+               
+               ctx.translate(jitterX, jitterY);
                ctx.scale(scale, scale);
+
+               // Draw Main Text
+               ctx.textAlign = 'center';
+               ctx.textBaseline = 'middle';
+               
+               // Chromatic Aberration (RGB Split) on High Impact
+               if (bass > 0.4 || high > 0.6) {
+                   const splitDist = (bass * 15) + (high * 10);
+                   
+                   ctx.globalCompositeOperation = 'screen';
+                   
+                   // Red Channel
+                   ctx.save();
+                   ctx.fillStyle = 'rgba(255, 0, 80, 0.8)';
+                   ctx.translate(-splitDist, 0);
+                   ctx.fillText(word.word, 0, 0);
+                   ctx.restore();
+                   
+                   // Blue Channel
+                   ctx.save();
+                   ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
+                   ctx.translate(splitDist, 0);
+                   ctx.fillText(word.word, 0, 0);
+                   ctx.restore();
+                   
+                   // White Center
+                   ctx.fillStyle = '#ffffff';
+                   ctx.fillText(word.word, 0, 0);
+                   
+                   ctx.globalCompositeOperation = 'source-over';
+               } else {
+                   ctx.fillText(word.word, 0, 0);
+               }
+
              } else if (isFuture) {
+               // --- ENTRANCE ANIMATIONS ---
                const diff = word.start - time;
                if (diff < 0.6) {
-                  const progress = 1 - (diff / 0.6);
-                  ctx.globalAlpha = 0.2 + (progress * 0.8);
-                  const enterScale = 0.8 + (0.2 * progress);
-                  ctx.scale(enterScale, enterScale);
-                  ctx.translate(0, (1-progress) * 40);
-               } else {
-                  ctx.globalAlpha = 0; 
-               }
-               ctx.fillStyle = "#ffffff";
-             } else {
-               // Past
-               ctx.globalAlpha = 0.3;
-               ctx.fillStyle = "#9ca3af";
-               ctx.scale(1, 1);
-             }
+                  const progress = 1 - (diff / 0.6); // 0 to 1
+                  const eased = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress; // easeInOut
+                  
+                  ctx.fillStyle = "#ffffff";
+                  ctx.shadowColor = "rgba(255,255,255,0.5)";
+                  ctx.shadowBlur = 10 * progress;
+                  ctx.globalAlpha = progress;
 
-             if (ctx.globalAlpha > 0.01) {
-                 ctx.textAlign = 'center';
-                 ctx.textBaseline = 'middle';
-                 ctx.fillText(word.word, 0, 0);
+                  // Select Animation based on Hash
+                  if (wordHash === 0) {
+                      // 1. Slam (Big to Normal)
+                      const scale = 3 - (2 * eased); 
+                      ctx.scale(scale, scale);
+                      ctx.globalAlpha = Math.pow(progress, 3);
+                  } else if (wordHash === 1) {
+                      // 2. Slide Up + Fade
+                      const yOffset = 100 * (1 - eased);
+                      ctx.translate(0, yOffset);
+                      const skew = (1-eased) * 0.5;
+                      ctx.transform(1, skew, 0, 1, 0, 0); // Skew
+                  } else {
+                      // 3. Unfold (Scale Y)
+                      ctx.scale(1, eased);
+                  }
+                  
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(word.word, 0, 0);
+               }
+             } else {
+               // --- EXIT ANIMATIONS ---
+               const diff = time - word.end;
+               // Fade out over 0.8s
+               if (diff < 0.8) {
+                   const progress = diff / 0.8;
+                   ctx.globalAlpha = 1 - progress;
+                   ctx.fillStyle = "#9ca3af";
+                   
+                   // Drift away
+                   if (wordHash === 0) {
+                       ctx.translate(0, -50 * progress); // Float Up
+                       ctx.scale(1 + progress * 0.2, 1 + progress * 0.2);
+                   } else if (wordHash === 1) {
+                       ctx.translate(progress * 50, 0); // Drift Right
+                       ctx.rotate(progress * 0.2);
+                   } else {
+                       ctx.scale(1 - progress * 0.3, 1 - progress * 0.3); // Shrink
+                       ctx.filter = `blur(${progress * 10}px)`; // Requires canvas filter support
+                   }
+                   
+                   ctx.textAlign = 'center';
+                   ctx.textBaseline = 'middle';
+                   ctx.fillText(word.word, 0, 0);
+                   ctx.filter = 'none'; // Reset filter
+               }
              }
              
              ctx.restore();
@@ -246,11 +317,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       });
     }
 
-    // Restore coordinate system to Screen Space for HUD elements
-    ctx.restore();
+    // --- 4. Post-Process (Screen Space) ---
+    ctx.restore(); // Back to screen space
 
-    // --- 4. HUD / Post-Process (Screen Space) ---
-    
     // Vignette
     const vignette = ctx.createRadialGradient(
         CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_HEIGHT/2, 
@@ -261,7 +330,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.fillStyle = vignette;
     ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Spectrum Bars (Fixed to bottom of screen)
+    // Spectrum Bars
     const bufferLength = raw.length;
     const displayCount = Math.min(bufferLength, 64);
     const barWidth = (CANVAS_WIDTH / displayCount) * 1.2;
@@ -270,7 +339,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     for (let i = 0; i < displayCount; i++) {
         const value = raw[i];
-        const barHeight = Math.pow(value / 255, 1.8) * (CANVAS_HEIGHT * 0.3); // Exaggerated power curve
+        const barHeight = Math.pow(value / 255, 1.8) * (CANVAS_HEIGHT * 0.3);
 
         if (barHeight > 5) {
             const hue = 180 + (i / displayCount) * 120 + (bass * 30);
@@ -278,11 +347,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             const light = 50 + (high * 30);
 
             ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.6)`;
-            
-            // Bottom Bar
             ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight, barWidth, barHeight);
             
-            // Subtle Reflection
+            // Reflection
             ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.15)`;
             ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight - (barHeight * 0.2), barWidth, barHeight * 0.2);
         }

@@ -1,30 +1,37 @@
 import React, { useRef } from 'react';
-import { Play, Pause, FileJson, Music, SkipBack, SkipForward, Download } from 'lucide-react';
+import { Play, Pause, FileJson, Music, SkipBack, SkipForward, Download, FileText } from 'lucide-react';
 
 interface ControlsProps {
   isPlaying: boolean;
   onTogglePlay: () => void;
   onJsonUpload: (jsonStr: string) => void;
+  onSrtUpload: (srtStr: string) => void;
   onAudioUpload: (file: File) => void;
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
   onRender: () => void;
   isRendering: boolean;
+  exportFormat: 'webm' | 'mp4';
+  onExportFormatChange: (format: 'webm' | 'mp4') => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
   isPlaying,
   onTogglePlay,
   onJsonUpload,
+  onSrtUpload,
   onAudioUpload,
   currentTime,
   duration,
   onSeek,
   onRender,
-  isRendering
+  isRendering,
+  exportFormat,
+  onExportFormatChange
 }) => {
   const jsonInputRef = useRef<HTMLInputElement>(null);
+  const srtInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
   const handleJsonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,6 +41,18 @@ export const Controls: React.FC<ControlsProps> = ({
     reader.onload = (event) => {
       if (event.target?.result) {
         onJsonUpload(event.target.result as string);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSrtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        onSrtUpload(event.target.result as string);
       }
     };
     reader.readAsText(file);
@@ -103,13 +122,25 @@ export const Controls: React.FC<ControlsProps> = ({
         {/* File Inputs & Render */}
         <div className="flex gap-3 order-1 md:order-2">
           
+          <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 overflow-hidden">
+             <select 
+               value={exportFormat}
+               onChange={(e) => onExportFormatChange(e.target.value as 'webm' | 'mp4')}
+               disabled={isRendering}
+               className="bg-transparent text-xs font-bold text-gray-300 px-3 py-2 outline-none cursor-pointer hover:bg-neutral-700 transition-colors disabled:opacity-50"
+             >
+               <option value="webm">WEBM (VP9)</option>
+               <option value="mp4">MP4 (H.264)</option>
+             </select>
+          </div>
+
           <button
             onClick={onRender}
             disabled={isRendering}
             className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-black bg-gradient-to-r from-purple-400 to-cyan-400 hover:from-purple-300 hover:to-cyan-300 rounded-md transition-all shadow-lg ${isRendering ? 'opacity-50 cursor-not-allowed animate-pulse' : ''}`}
           >
              <Download size={16} />
-             <span>{isRendering ? 'Rendering...' : 'Render Video'}</span>
+             <span>{isRendering ? 'Rendering...' : 'Render'}</span>
           </button>
 
           <div className="h-8 w-[1px] bg-white/10 mx-2 hidden md:block"></div>
@@ -117,10 +148,10 @@ export const Controls: React.FC<ControlsProps> = ({
           <button
             onClick={() => jsonInputRef.current?.click()}
             disabled={isRendering}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
           >
             <FileJson size={16} />
-            <span className="hidden sm:inline">Load JSON</span>
+            <span className="hidden sm:inline">JSON</span>
           </button>
           <input
             type="file"
@@ -131,12 +162,28 @@ export const Controls: React.FC<ControlsProps> = ({
           />
 
           <button
+            onClick={() => srtInputRef.current?.click()}
+            disabled={isRendering}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
+          >
+            <FileText size={16} />
+            <span className="hidden sm:inline">SRT</span>
+          </button>
+          <input
+            type="file"
+            ref={srtInputRef}
+            onChange={handleSrtChange}
+            accept=".srt"
+            className="hidden"
+          />
+
+          <button
             onClick={() => audioInputRef.current?.click()}
             disabled={isRendering}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
           >
             <Music size={16} />
-            <span className="hidden sm:inline">Load Audio</span>
+            <span className="hidden sm:inline">Audio</span>
           </button>
           <input
             type="file"
