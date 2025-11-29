@@ -80,38 +80,73 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     const { bass, mid, high, raw } = analysis;
 
-    // --- 1. Background ---
+    // --- 0. Pre-Calculation: Active Segment ---
+    const activeSegmentIndex = data.segments.findIndex(
+      (seg) => time >= seg.start - 1.0 && time <= seg.end + 1.0
+    );
+    const activeSegment = activeSegmentIndex !== -1 ? data.segments[activeSegmentIndex] : null;
+
+    // --- 1. Background (Screen Space) ---
+    // Drawn before camera transform to ensure full coverage
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
     ctx.fillStyle = '#050505';
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Pulsing Gradient
+    // Pulsing Gradient Background
     const centerX = CANVAS_WIDTH / 2;
     const centerY = CANVAS_HEIGHT / 2;
-    const radius = CANVAS_WIDTH * (0.6 + bass * 0.3);
-    const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-    const opacity = 0.1 + (bass * 0.2);
+    const bgRadius = CANVAS_WIDTH * (0.6 + bass * 0.3);
+    const bgGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, bgRadius);
+    const bgOpacity = 0.15 + (bass * 0.25);
     
-    gradient.addColorStop(0, `rgba(34, 211, 238, ${opacity})`);
-    gradient.addColorStop(0.4, `rgba(168, 85, 247, ${opacity * 0.5})`);
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    bgGradient.addColorStop(0, `rgba(34, 211, 238, ${bgOpacity})`);
+    bgGradient.addColorStop(0.5, `rgba(168, 85, 247, ${bgOpacity * 0.5})`);
+    bgGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // --- 2. Particles (Deterministic Physics) ---
+    // --- 2. Camera Setup ---
+    ctx.save(); // Save screen space state
+
+    // Camera Parameters
+    // A. Zoom: Pulse on Bass + Slow Breathing
+    const baseZoom = 1.05; // Slight overscan to hide edges during rotation
+    const beatZoom = bass * 0.08; 
+    const breathZoom = Math.sin(time * 0.5) * 0.02;
+    const totalZoom = baseZoom + beatZoom + breathZoom;
+
+    // B. Rotation: Tilt based on segment index + slow drift
+    // Even segments tilt left, Odd segments tilt right
+    let targetTilt = 0;
+    if (activeSegmentIndex !== -1) {
+        targetTilt = (activeSegmentIndex % 2 === 0 ? 1 : -1) * 0.03; // ~1.7 degrees
+    }
+    const driftRot = Math.sin(time * 0.2) * 0.015;
+    const totalRot = targetTilt + driftRot;
+
+    // C. Pan: Drift X/Y
+    const panX = Math.sin(time * 0.3) * 30;
+    const panY = Math.cos(time * 0.4) * 20;
+
+    // Apply Transform: Move to center -> Rotate/Scale -> Move back (with pan)
+    ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.rotate(totalRot);
+    ctx.scale(totalZoom, totalZoom);
+    ctx.translate(-CANVAS_WIDTH / 2 - panX, -CANVAS_HEIGHT / 2 - panY);
+
+    // --- 3. World Elements (Particles, Waves, Text) ---
+
+    // Particles
     particlesRef.current.forEach(p => {
-        // Position is a function of Time + Physics + Music
-        // We simulate "flow" by using time in sine waves rather than accumulating velocity 
-        // to allow seeking/frame-perfect render without simulation state
-        
-        // Base movement based on time
+        // Position logic
         let nx = p.x + (p.vx * time * 60 * 0.5); 
         let ny = p.y + (p.vy * time * 60 * 0.5);
-
-        // Add music reactivity
+        
+        // Audio reactivity: Particles float up/down with Mid range
         ny -= mid * 50 * Math.sin(time + p.id);
 
-        // Wrap around logic (simulated via modulo)
+        // Wrap around
         nx = ((nx % CANVAS_WIDTH) + CANVAS_WIDTH) % CANVAS_WIDTH;
         ny = ((ny % CANVAS_HEIGHT) + CANVAS_HEIGHT) % CANVAS_HEIGHT;
 
@@ -119,62 +154,27 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const size = p.size * (1 + high * 2);
         ctx.arc(nx, ny, size, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
-        // Flash based on mid energy
         const flash = Math.sin(time * 5 + p.phase) * mid; 
         ctx.globalAlpha = Math.min(1, Math.max(0, p.alpha + flash));
         ctx.fill();
         ctx.globalAlpha = 1.0;
     });
 
-    // --- 3. Wave Effect ---
+    // Wave Effect
     ctx.save();
     ctx.beginPath();
-    // Start line
-    ctx.moveTo(0, CANVAS_HEIGHT / 2);
-    for (let x = 0; x <= CANVAS_WIDTH; x += 20) {
-        // Deterministic wave function
-        const yOffset = Math.sin(x * 0.005 + time * 2) * (50 + bass * 100);
-        const yOffset2 = Math.cos(x * 0.01 - time) * (30 + mid * 50);
+    ctx.moveTo(-100, CANVAS_HEIGHT / 2); // Start off-screen
+    for (let x = -100; x <= CANVAS_WIDTH + 100; x += 40) {
+        const yOffset = Math.sin(x * 0.005 + time * 2) * (50 + bass * 120);
+        const yOffset2 = Math.cos(x * 0.01 - time) * (30 + mid * 60);
         ctx.lineTo(x, CANVAS_HEIGHT / 2 + yOffset + yOffset2);
     }
     ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + bass * 0.1})`;
-    ctx.lineWidth = 2 + bass * 4;
+    ctx.lineWidth = 2 + bass * 5;
     ctx.stroke();
     ctx.restore();
 
-    // --- 4. Spectrum Bars ---
-    const bufferLength = raw.length;
-    const displayCount = Math.min(bufferLength, 64);
-    const barWidth = (CANVAS_WIDTH / displayCount) * 1.2;
-    let xPos = 0;
-    const startX = (CANVAS_WIDTH - (displayCount * (barWidth + 2))) / 2;
-
-    for (let i = 0; i < displayCount; i++) {
-        const value = raw[i];
-        const barHeight = Math.pow(value / 255, 1.5) * (CANVAS_HEIGHT * 0.35);
-
-        if (barHeight > 5) {
-            const hue = 180 + (i / displayCount) * 120 + (bass * 30);
-            const sat = 70 + (mid * 30);
-            const light = 50 + (high * 20);
-
-            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.5)`;
-            
-            // Bottom
-            ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight, barWidth, barHeight);
-            
-            // Top Mirror (faint)
-            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.1)`;
-            ctx.fillRect(startX + xPos, 0, barWidth, barHeight * 0.6);
-        }
-        xPos += barWidth + 2;
-    }
-
-    // --- 5. Typography ---
-    const activeSegment = data.segments.find(
-      (seg) => time >= seg.start - 1.0 && time <= seg.end + 1.0
-    );
-
+    // Typography
     if (activeSegment) {
       const lines = getLines(activeSegment.id, activeSegment.words);
       const lineHeight = 130;
@@ -212,8 +212,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                ctx.shadowColor = "rgba(56, 189, 248, 0.9)";
                ctx.shadowBlur = 40 + (bass * 30); 
                ctx.fillStyle = "#22d3ee";
-               // Slight pulse on beat
-               const scale = 1.1 + (bass * 0.1);
+               // Active Word Pop
+               const scale = 1.1 + (bass * 0.15);
                ctx.scale(scale, scale);
              } else if (isFuture) {
                const diff = word.start - time;
@@ -222,7 +222,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   ctx.globalAlpha = 0.2 + (progress * 0.8);
                   const enterScale = 0.8 + (0.2 * progress);
                   ctx.scale(enterScale, enterScale);
-                  // ctx.filter = `blur(${(1-progress)*8}px)`; // Filter is expensive, use simple opacity/scale for speed
                   ctx.translate(0, (1-progress) * 40);
                } else {
                   ctx.globalAlpha = 0; 
@@ -245,6 +244,49 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              currentX += width + 40;
          });
       });
+    }
+
+    // Restore coordinate system to Screen Space for HUD elements
+    ctx.restore();
+
+    // --- 4. HUD / Post-Process (Screen Space) ---
+    
+    // Vignette
+    const vignette = ctx.createRadialGradient(
+        CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_HEIGHT/2, 
+        CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH/1.2
+    );
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Spectrum Bars (Fixed to bottom of screen)
+    const bufferLength = raw.length;
+    const displayCount = Math.min(bufferLength, 64);
+    const barWidth = (CANVAS_WIDTH / displayCount) * 1.2;
+    let xPos = 0;
+    const startX = (CANVAS_WIDTH - (displayCount * (barWidth + 2))) / 2;
+
+    for (let i = 0; i < displayCount; i++) {
+        const value = raw[i];
+        const barHeight = Math.pow(value / 255, 1.8) * (CANVAS_HEIGHT * 0.3); // Exaggerated power curve
+
+        if (barHeight > 5) {
+            const hue = 180 + (i / displayCount) * 120 + (bass * 30);
+            const sat = 80 + (mid * 20);
+            const light = 50 + (high * 30);
+
+            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.6)`;
+            
+            // Bottom Bar
+            ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight, barWidth, barHeight);
+            
+            // Subtle Reflection
+            ctx.fillStyle = `hsla(${hue}, ${sat}%, ${light}%, 0.15)`;
+            ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight - (barHeight * 0.2), barWidth, barHeight * 0.2);
+        }
+        xPos += barWidth + 2;
     }
   };
 
