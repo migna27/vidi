@@ -57,6 +57,16 @@ export interface AnimationKeyframe {
   values: KeyframeValues;
 }
 
+export interface AudioLayer {
+  id: string;
+  name: string;
+  buffer: AudioBuffer;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
+  duration: number;
+}
+
 export interface RendererConfig {
   id: string;
   name: string;

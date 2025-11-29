@@ -1,10 +1,11 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
-import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile } from './types';
+import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer } from './types';
 import { Save, FolderOpen, Activity, Loader2, Video, Download } from 'lucide-react';
 
 // @ts-ignore
@@ -113,8 +114,9 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [audioName, setAudioName] = useState<string>("");
+  
+  // Multi-track State
+  const [audioLayers, setAudioLayers] = useState<AudioLayer[]>([]);
   
   const [renderStatus, setRenderStatus] = useState<RenderStatus>({ state: 'idle', progress: 0 });
   const [audioVisualizerData, setAudioVisualizerData] = useState<AudioVisualizerData>({ bass: 0, mid: 0, high: 0, raw: new Uint8Array() });
@@ -122,44 +124,245 @@ export default function App() {
   const [rendererConfig, setRendererConfig] = useState<RendererConfig>(TEMPLATES[0]);
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
 
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const requestRef = useRef<number>(0);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  // Web Audio Context Refs
   const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const masterGainRef = useRef<GainNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourcesRef = useRef<Map<string, AudioBufferSourceNode>>(new Map());
+  const gainsRef = useRef<Map<string, GainNode>>(new Map());
+  
   const rendererRef = useRef<CanvasVideoRendererRef>(null);
+  const requestRef = useRef<number>(0);
+  const startTimeRef = useRef<number>(0);
+  const pauseTimeRef = useRef<number>(0);
 
-  // Initialize Audio Context on user interaction (handled in togglePlay)
-  const initAudioContext = () => {
-    if (!audioContextRef.current) {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      audioContextRef.current = new AudioContext();
-      
-      const analyser = audioContextRef.current.createAnalyser();
-      analyser.fftSize = 256;
-      analyserRef.current = analyser;
+  // Initialize Audio Engine
+  const initAudioEngine = () => {
+      if (!audioContextRef.current) {
+          const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+          const ctx = new AudioContext();
+          audioContextRef.current = ctx;
 
-      if (audioRef.current) {
-        sourceRef.current = audioContextRef.current.createMediaElementSource(audioRef.current);
-        sourceRef.current.connect(analyser);
-        analyser.connect(audioContextRef.current.destination);
+          // Master Gain
+          const masterGain = ctx.createGain();
+          masterGain.connect(ctx.destination);
+          masterGainRef.current = masterGain;
+
+          // Analyser
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          masterGain.connect(analyser); // Master -> Analyser
+          analyserRef.current = analyser;
+      } else if (audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume();
       }
-    } else if (audioContextRef.current.state === 'suspended') {
+  };
+
+  // Handle Layer Upload
+  const handleAudioLayerAdd = async (file: File) => {
+      initAudioEngine();
+      if (!audioContextRef.current) return;
+
+      try {
+          const arrayBuffer = await file.arrayBuffer();
+          const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+          
+          const newLayer: AudioLayer = {
+              id: Date.now().toString() + Math.random().toString(),
+              name: file.name,
+              buffer: audioBuffer,
+              volume: 1.0,
+              muted: false,
+              solo: false,
+              duration: audioBuffer.duration
+          };
+          
+          setAudioLayers(prev => {
+              const updated = [...prev, newLayer];
+              // Update master duration based on longest track
+              const maxDur = Math.max(...updated.map(l => l.duration));
+              setDuration(maxDur);
+              return updated;
+          });
+      } catch (e) {
+          console.error("Error decoding audio", e);
+          alert("Failed to load audio file.");
+      }
+  };
+
+  const updateLayer = (id: string, updates: Partial<AudioLayer>) => {
+      setAudioLayers(prev => prev.map(l => {
+          if (l.id === id) return { ...l, ...updates };
+          return l;
+      }));
+  };
+
+  const removeLayer = (id: string) => {
+      setAudioLayers(prev => {
+          const updated = prev.filter(l => l.id !== id);
+          const maxDur = Math.max(...updated.map(l => l.duration), 0);
+          setDuration(maxDur);
+          return updated;
+      });
+  };
+
+  // Sync Audio Nodes with React State (Volume/Mute)
+  useEffect(() => {
+     if (!audioContextRef.current) return;
+     
+     const hasSolo = audioLayers.some(l => l.solo);
+
+     audioLayers.forEach(layer => {
+         // Create gain node if missing
+         if (!gainsRef.current.has(layer.id)) {
+             const g = audioContextRef.current!.createGain();
+             if (masterGainRef.current) g.connect(masterGainRef.current);
+             gainsRef.current.set(layer.id, g);
+         }
+
+         const gainNode = gainsRef.current.get(layer.id);
+         if (gainNode) {
+             // Logic: Muted if layer.muted OR (there is a solo mode active and this layer is NOT soloed)
+             const effectiveMute = layer.muted || (hasSolo && !layer.solo);
+             
+             // Smooth transition to avoid clicking
+             const currentTime = audioContextRef.current!.currentTime;
+             gainNode.gain.cancelScheduledValues(currentTime);
+             gainNode.gain.setTargetAtTime(effectiveMute ? 0 : layer.volume, currentTime, 0.05);
+         }
+     });
+     
+     // Cleanup unused gains
+     gainsRef.current.forEach((val, key) => {
+         if (!audioLayers.find(l => l.id === key)) {
+             val.disconnect();
+             gainsRef.current.delete(key);
+         }
+     });
+
+  }, [audioLayers]);
+
+
+  const stopAllSources = () => {
+      sourcesRef.current.forEach(source => {
+          try { source.stop(); } catch(e) {}
+          source.disconnect();
+      });
+      sourcesRef.current.clear();
+  };
+
+  const startAllSources = (offset: number) => {
+      if (!audioContextRef.current) return;
+      stopAllSources();
+
+      audioLayers.forEach(layer => {
+          const source = audioContextRef.current!.createBufferSource();
+          source.buffer = layer.buffer;
+          
+          const gainNode = gainsRef.current.get(layer.id);
+          if (gainNode) {
+              source.connect(gainNode);
+          }
+
+          source.start(0, offset);
+          sourcesRef.current.set(layer.id, source);
+      });
+  };
+
+  const togglePlay = () => {
+    initAudioEngine();
+    if (!audioContextRef.current) return;
+
+    if (isPlaying) {
+      // Pause
+      audioContextRef.current.suspend();
+      setIsPlaying(false);
+    } else {
+      // Play
       audioContextRef.current.resume();
+      
+      // If sources aren't running (stopped or first play), start them
+      if (sourcesRef.current.size === 0) {
+          startAllSources(currentTime);
+          startTimeRef.current = audioContextRef.current.currentTime - currentTime;
+      }
+      setIsPlaying(true);
     }
   };
 
-  const handleAudioUpload = (file: File) => {
-    const url = URL.createObjectURL(file);
-    if (audioRef.current) {
-      audioRef.current.src = url;
-      audioRef.current.load();
-      setAudioFile(file);
-      setAudioName(file.name);
-      setIsPlaying(false);
-      setCurrentTime(0);
+  const handleSeek = (time: number) => {
+      if (!audioContextRef.current) return;
+      
+      const wasPlaying = isPlaying;
+      
+      // Always stop and restart for precise seek
+      audioContextRef.current.suspend(); // Pause briefly while seeking logic runs
+      stopAllSources();
+      
+      setCurrentTime(time);
+      startTimeRef.current = audioContextRef.current.currentTime - time;
+
+      if (wasPlaying) {
+          startAllSources(time);
+          audioContextRef.current.resume();
+      } else {
+          // If paused, just reset logic so next play starts here
+          // No op needed as startAllSources will be called in togglePlay
+      }
+  };
+
+  const analyzeAudio = () => {
+    if (analyserRef.current) {
+      const bufferLength = analyserRef.current.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      analyserRef.current.getByteFrequencyData(dataArray);
+
+      // Simple frequency bands
+      const bassRange = dataArray.slice(0, 10);
+      const midRange = dataArray.slice(10, 100);
+      const highRange = dataArray.slice(100, 200);
+
+      const avg = (arr: Uint8Array) => arr.reduce((a, b) => a + b, 0) / arr.length;
+
+      setAudioVisualizerData({
+        bass: avg(bassRange) / 255,
+        mid: avg(midRange) / 255,
+        high: avg(highRange) / 255,
+        raw: dataArray
+      });
     }
   };
+
+  const loop = () => {
+    if (isPlaying && audioContextRef.current) {
+        // Sync time
+        const now = audioContextRef.current.currentTime;
+        let syncedTime = now - startTimeRef.current;
+        
+        if (syncedTime >= duration && duration > 0) {
+            syncedTime = duration;
+            setIsPlaying(false);
+            stopAllSources();
+            audioContextRef.current.suspend();
+        }
+        
+        setCurrentTime(syncedTime);
+        analyzeAudio();
+    }
+    
+    // Always render frame
+    if (rendererRef.current) {
+        rendererRef.current.drawFrame(currentTime, audioVisualizerData);
+    }
+
+    requestRef.current = requestAnimationFrame(loop);
+  };
+
+  useEffect(() => {
+    requestRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(requestRef.current);
+  }, [currentTime, audioVisualizerData, isPlaying, duration]);
+
 
   const handleJsonUpload = (jsonStr: string) => {
     try {
@@ -191,7 +394,7 @@ export default function App() {
       const project: ProjectFile = {
           version: '1.0',
           timestamp: Date.now(),
-          name: audioName || 'Untitled Project',
+          name: audioLayers.length > 0 ? audioLayers[0].name : 'Untitled Project',
           lyricData: data,
           config: rendererConfig
       };
@@ -217,8 +420,7 @@ export default function App() {
                   if (project.lyricData && project.config) {
                       setData(project.lyricData);
                       setRendererConfig(project.config);
-                      setAudioName(project.name + " (Audio not included)");
-                      alert("Project loaded! Please re-select your audio file.");
+                      alert("Project loaded! Please re-add your audio layers.");
                   } else {
                       alert("Invalid project file structure.");
                   }
@@ -230,103 +432,55 @@ export default function App() {
       reader.readAsText(file);
   };
 
-
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        initAudioContext();
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleSeek = (time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
-  };
-
-  const analyzeAudio = () => {
-    if (analyserRef.current) {
-      const bufferLength = analyserRef.current.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      analyserRef.current.getByteFrequencyData(dataArray);
-
-      // Simple frequency bands
-      const bassRange = dataArray.slice(0, 10);
-      const midRange = dataArray.slice(10, 100);
-      const highRange = dataArray.slice(100, 200);
-
-      const avg = (arr: Uint8Array) => arr.reduce((a, b) => a + b, 0) / arr.length;
-
-      setAudioVisualizerData({
-        bass: avg(bassRange) / 255,
-        mid: avg(midRange) / 255,
-        high: avg(highRange) / 255,
-        raw: dataArray
-      });
-    }
-  };
-
-  const loop = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
-      if (!audioRef.current.paused) {
-        analyzeAudio();
-      }
-    }
-    
-    // Render Frame to Canvas
-    if (rendererRef.current) {
-        rendererRef.current.drawFrame(currentTime, audioVisualizerData);
-    }
-
-    requestRef.current = requestAnimationFrame(loop);
-  };
-
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(requestRef.current);
-  }, [currentTime, audioVisualizerData]); // Dependencies for loop closure capture
-
   const startRendering = async () => {
-    if (!audioFile) {
-      alert("Please upload an audio file first.");
+    if (audioLayers.length === 0) {
+      alert("Please add at least one audio layer.");
       return;
     }
     
     if (renderStatus.state !== 'idle') return;
 
-    // Get Resolution from Config
     const resConfig = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
     const VIDEO_WIDTH = resConfig.width;
     const VIDEO_HEIGHT = resConfig.height;
 
     setRenderStatus({ state: 'analyzing', progress: 0 });
-    setIsPlaying(false);
-    if (audioRef.current) audioRef.current.pause();
+    
+    // Pause playback to free resources
+    if (isPlaying && audioContextRef.current) {
+        audioContextRef.current.suspend();
+        setIsPlaying(false);
+    }
 
     try {
-      // 1. Prepare Offline Audio Context for faster analysis
-      const arrayBuffer = await audioFile.arrayBuffer();
-      const offlineCtx = new OfflineAudioContext(2, 44100 * 10, 44100); // Temp duration
-      const audioBuffer = await offlineCtx.decodeAudioData(arrayBuffer);
+      const sampleRate = 44100;
+      // Use standard sample rate for compatibility
+      const offlineCtx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
       
-      const duration = audioBuffer.duration;
-      const finalOfflineCtx = new OfflineAudioContext(2, duration * 44100, 44100);
-      const source = finalOfflineCtx.createBufferSource();
-      source.buffer = audioBuffer;
+      const offlineMasterGain = offlineCtx.createGain();
+      offlineMasterGain.connect(offlineCtx.destination);
       
-      const analyser = finalOfflineCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyser.connect(finalOfflineCtx.destination);
+      const offlineAnalyser = offlineCtx.createAnalyser();
+      offlineAnalyser.fftSize = 256;
+      offlineMasterGain.connect(offlineAnalyser);
 
-      // 2. Setup Video Encoder (Muxer)
+      const hasSolo = audioLayers.some(l => l.solo);
+      
+      audioLayers.forEach(layer => {
+           const effectiveMute = layer.muted || (hasSolo && !layer.solo);
+           if (effectiveMute) return;
+
+           const source = offlineCtx.createBufferSource();
+           source.buffer = layer.buffer;
+           
+           const gain = offlineCtx.createGain();
+           gain.gain.value = layer.volume;
+           
+           source.connect(gain);
+           gain.connect(offlineMasterGain);
+           source.start(0);
+      });
+
       const FPS = 30;
       const totalFrames = Math.floor(duration * FPS);
       
@@ -342,7 +496,7 @@ export default function App() {
             audio: {
                 codec: 'aac',
                 numberOfChannels: 2,
-                sampleRate: 44100
+                sampleRate: sampleRate
             },
             fastStart: false 
         });
@@ -358,24 +512,24 @@ export default function App() {
             audio: {
                 codec: 'A_OPUS',
                 numberOfChannels: 2,
-                sampleRate: 44100
+                sampleRate: sampleRate
             }
         });
       }
 
       const videoEncoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => console.error(e)
+        error: (e) => console.error("VideoEncoder error:", e)
       });
       
       const codecConfig: VideoEncoderConfig = exportFormat === 'mp4' 
       ? {
-        codec: 'avc1.42001f', // H.264 Baseline
+        codec: 'avc1.4d002a', // Main Profile Level 4.2 (Up to 1080p60)
         width: VIDEO_WIDTH,
         height: VIDEO_HEIGHT,
-        bitrate: 5_000_000 // 5 Mbps
+        bitrate: 6_000_000 
       } : {
-        codec: 'vp09.00.10.08', // VP9
+        codec: 'vp09.00.10.08',
         width: VIDEO_WIDTH,
         height: VIDEO_HEIGHT,
         bitrate: 5_000_000
@@ -383,92 +537,111 @@ export default function App() {
 
       videoEncoder.configure(codecConfig);
 
+      setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
+      
+      const canvas = rendererRef.current?.canvas;
+      if (!canvas) throw new Error("Canvas not found");
+
+      const dataArray = new Uint8Array(offlineAnalyser.frequencyBinCount);
+      const frameDuration = 1 / FPS;
+
+      // Schedule Suspend Callbacks
+      // We iterate and schedule ALL suspensions. 
+      // The callbacks will fire sequentially as offlineCtx processes.
+      for (let i = 0; i < totalFrames; i++) {
+         const time = i * frameDuration;
+         
+         offlineCtx.suspend(time).then(async () => {
+             // 1. Audio Analysis
+             offlineAnalyser.getByteFrequencyData(dataArray);
+             const bass = dataArray.slice(0, 10).reduce((a,b)=>a+b,0) / 10 / 255;
+             const mid = dataArray.slice(10, 100).reduce((a,b)=>a+b,0) / 90 / 255;
+             const high = dataArray.slice(100, 200).reduce((a,b)=>a+b,0) / 100 / 255;
+             
+             // 2. Draw Frame
+             // We use 'await' implicitly by synchronous execution but drawing is fast.
+             // If drawing is heavy, it blocks the callback thread.
+             rendererRef.current?.drawFrame(time, { bass, mid, high, raw: dataArray });
+             
+             // 3. Encode Frame
+             const frame = new VideoFrame(canvas, { timestamp: time * 1000000 });
+             // Keyframe every 2 seconds
+             const keyFrame = i % (FPS * 2) === 0;
+             videoEncoder.encode(frame, { keyFrame });
+             frame.close();
+             
+             // Update UI every 30 frames to avoid spamming state updates
+             if (i % 30 === 0) {
+                 setRenderStatus(prev => ({ ...prev, progress: i }));
+             }
+             
+             // 4. Resume Processing
+             offlineCtx.resume();
+         }).catch(e => console.error("Suspend error", e));
+      }
+      
+      // Start processing audio (which triggers the suspensions)
+      const renderedBuffer = await offlineCtx.startRendering();
+
+      // Final progress update
+      setRenderStatus(prev => ({ ...prev, progress: totalFrames }));
+
+      // Audio Encoding
       const audioEncoder = new AudioEncoder({
         output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-        error: (e) => console.error(e)
+        error: (e) => console.error("AudioEncoder error:", e)
       });
       
       const audioCodecString = exportFormat === 'mp4' ? 'mp4a.40.2' : 'opus';
       audioEncoder.configure({
         codec: audioCodecString,
         numberOfChannels: 2,
-        sampleRate: 44100,
+        sampleRate: sampleRate,
         bitrate: 128000
       });
 
-      // 3. Render Loop
-      setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
+      const numberOfFrames = renderedBuffer.length;
+      const numberOfChannels = renderedBuffer.numberOfChannels;
+      const interleaved = new Float32Array(numberOfFrames * numberOfChannels);
+      const channel0 = renderedBuffer.getChannelData(0);
+      const channel1 = renderedBuffer.getChannelData(1);
       
-      const canvas = rendererRef.current?.canvas;
-      if (!canvas) throw new Error("Canvas not found");
-
-      source.start(0);
-
-      // We process audio in chunks to get frequency data at each frame time
-      // But OfflineAudioContext doesn't allow "seeking" easily during rendering.
-      // Instead, we will simulate the render loop manually.
-      // NOTE: For true synchronization, we'd use suspend() on offlineCtx, but simple approximation:
-      
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      
-      // Suspend at each frame interval to grab frequency data and draw
-      const frameDuration = 1 / FPS;
-      for (let i = 0; i < totalFrames; i++) {
-         finalOfflineCtx.suspend(i * frameDuration).then(() => {
-             analyser.getByteFrequencyData(dataArray);
-             
-             // Prepare Analysis Data
-             const bass = dataArray.slice(0, 10).reduce((a,b)=>a+b,0) / 10 / 255;
-             const mid = dataArray.slice(10, 100).reduce((a,b)=>a+b,0) / 90 / 255;
-             const high = dataArray.slice(100, 200).reduce((a,b)=>a+b,0) / 100 / 255;
-             
-             // Draw
-             rendererRef.current?.drawFrame(i * frameDuration, { bass, mid, high, raw: dataArray });
-             
-             // Encode Video
-             const frame = new VideoFrame(canvas, { timestamp: i * frameDuration * 1000000 });
-             videoEncoder.encode(frame, { keyFrame: i % FPS === 0 });
-             frame.close();
-             
-             setRenderStatus(prev => ({ ...prev, progress: i }));
-         });
+      for(let i=0; i<numberOfFrames; i++) {
+          interleaved[i*2] = channel0[i];
+          interleaved[i*2+1] = channel1[i];
       }
 
-      // Finish audio context to trigger all suspends
-      finalOfflineCtx.startRendering().then((renderedBuffer) => {
-         // Encode Audio
-         // This is complex in browser without helpers. 
-         // For now, we will assume visual-only export or silence if using basic muxer integration
-         // To properly encode audio, we'd need to copy buffer data to AudioData and encode.
-         
-         const audioData = new AudioData({
-             format: 'f32',
-             sampleRate: 44100,
-             numberOfFrames: renderedBuffer.length,
-             numberOfChannels: 2,
-             timestamp: 0,
-             data: new Float32Array(renderedBuffer.length * 2) // Interleaved placeholder
-         });
-         // Copy channel data... (omitted for brevity in this single file fix, usually requires interleave)
-         
-         // Using a simpler approach: Just finalize video for now to ensure visual output works
-         videoEncoder.flush().then(() => {
-             muxer.finalize();
-             const { buffer } = muxer.target;
-             const blob = new Blob([buffer], { type: exportFormat === 'mp4' ? 'video/mp4' : 'video/webm' });
-             const url = URL.createObjectURL(blob);
-             const a = document.createElement('a');
-             a.href = url;
-             a.download = `kinetic-lyric-video.${exportFormat}`;
-             a.click();
-             setRenderStatus({ state: 'done', progress: 100 });
-             setTimeout(() => setRenderStatus({ state: 'idle', progress: 0 }), 3000);
-         });
+      const audioData = new AudioData({
+        format: 'f32',
+        sampleRate: sampleRate,
+        numberOfFrames: numberOfFrames,
+        numberOfChannels: numberOfChannels,
+        timestamp: 0,
+        data: interleaved
       });
 
+      audioEncoder.encode(audioData);
+      await audioEncoder.flush();
+      audioEncoder.close();
+
+      await videoEncoder.flush();
+      videoEncoder.close();
+      
+      muxer.finalize();
+      const { buffer } = muxer.target;
+      const blob = new Blob([buffer], { type: exportFormat === 'mp4' ? 'video/mp4' : 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kinetic-lyric-video.${exportFormat}`;
+      a.click();
+      
+      setRenderStatus({ state: 'done', progress: 100 });
+      setTimeout(() => setRenderStatus({ state: 'idle', progress: 0 }), 3000);
+
     } catch (e) {
-      console.error(e);
-      alert("Rendering failed. Check console.");
+      console.error("Export failed", e);
+      alert("Rendering failed. Please check the console for details.");
       setRenderStatus({ state: 'idle', progress: 0 });
     }
   };
@@ -519,7 +692,7 @@ export default function App() {
                  </select>
                  <button
                     onClick={startRendering}
-                    disabled={renderStatus.state !== 'idle' || !audioFile}
+                    disabled={renderStatus.state !== 'idle' || audioLayers.length === 0}
                     className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all"
                  >
                     {renderStatus.state === 'idle' ? (
@@ -548,8 +721,10 @@ export default function App() {
                  currentTime={currentTime}
                  onJsonUpload={handleJsonUpload}
                  onSrtUpload={handleSrtUpload}
-                 onAudioUpload={handleAudioUpload}
-                 audioName={audioName}
+                 onAudioLayerAdd={handleAudioLayerAdd}
+                 audioLayers={audioLayers}
+                 onUpdateLayer={updateLayer}
+                 onRemoveLayer={removeLayer}
               />
           </div>
 
@@ -575,11 +750,11 @@ export default function App() {
                        />
                        
                        {/* Overlay info */}
-                       {!audioFile && (
+                       {audioLayers.length === 0 && (
                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                                <div className="text-center">
-                                   <p className="text-gray-400 font-mono text-sm mb-2">No Audio Source</p>
-                                   <p className="text-xs text-gray-600">Load a file in the Project tab</p>
+                                   <p className="text-gray-400 font-mono text-sm mb-2">No Audio Layers</p>
+                                   <p className="text-xs text-gray-600">Add an instrumental or vocal track in the Project tab</p>
                                </div>
                            </div>
                        )}
@@ -592,7 +767,7 @@ export default function App() {
                         isPlaying={isPlaying}
                         onTogglePlay={togglePlay}
                         currentTime={currentTime}
-                        duration={audioRef.current?.duration || 0}
+                        duration={duration}
                         onSeek={handleSeek}
                         isRendering={renderStatus.state !== 'idle'}
                     />
@@ -600,13 +775,6 @@ export default function App() {
           </div>
 
       </div>
-
-      <audio 
-        ref={audioRef} 
-        onEnded={() => setIsPlaying(false)}
-        onLoadedMetadata={() => setDuration(audioRef.current?.duration || 0)}
-        className="hidden" 
-      />
     </div>
   );
 }

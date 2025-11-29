@@ -1,18 +1,21 @@
 
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer } from '../types';
 
 interface SettingsPanelProps {
   config: RendererConfig;
   onUpdate: (config: RendererConfig) => void;
   currentTime: number;
-  // File Handlers moved here
+  // File Handlers
   onJsonUpload: (jsonStr: string) => void;
   onSrtUpload: (srtStr: string) => void;
-  onAudioUpload: (file: File) => void;
-  audioName?: string;
+  onAudioLayerAdd: (file: File) => void;
+  // Audio Mixer Handlers
+  audioLayers: AudioLayer[];
+  onUpdateLayer: (id: string, updates: Partial<AudioLayer>) => void;
+  onRemoveLayer: (id: string) => void;
 }
 
 // Helper Components
@@ -155,10 +158,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     config, 
     onUpdate, 
     currentTime,
-    onAudioUpload,
+    onAudioLayerAdd,
+    audioLayers,
+    onUpdateLayer,
+    onRemoveLayer,
     onJsonUpload,
     onSrtUpload,
-    audioName
 }) => {
   const [activeTab, setActiveTab] = useState<'project' | 'templates' | 'customize' | 'timeline'>('project');
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
@@ -216,7 +221,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   };
 
-  // File Handlers for Project Tab
   const handleJsonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -239,7 +243,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) onAudioUpload(file);
+    if (file) {
+        onAudioLayerAdd(file);
+        // Reset input
+        if (audioInputRef.current) audioInputRef.current.value = '';
+    }
   };
 
   // Keyframe Logic
@@ -334,22 +342,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* PROJECT TAB */}
         {activeTab === 'project' && (
              <div className="p-4 space-y-6">
+                
+                {/* Audio Mixer */}
                 <section>
-                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Music size={14}/> Audio Source
-                    </h3>
-                    <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                    <div className="flex items-center justify-between mb-3">
+                         <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                            <Layers size={14}/> Audio Mixer
+                        </h3>
                         <button
-                            onClick={() => audioInputRef.current?.click()}
-                            className="w-full flex items-center gap-3 px-3 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/10 group"
+                             onClick={() => audioInputRef.current?.click()}
+                             className="text-[10px] bg-neutral-700 hover:bg-neutral-600 px-2 py-1 rounded flex items-center gap-1 transition-colors"
                         >
-                            <div className="w-10 h-10 rounded-full bg-cyan-900/30 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-900/50 transition-colors">
-                                <FileAudio size={20} />
-                            </div>
-                            <div className="flex flex-col items-start overflow-hidden">
-                                <span className="text-sm font-bold text-gray-200 truncate w-full text-left">{audioName || 'No Audio Selected'}</span>
-                                <span className="text-xs text-gray-500">Click to replace</span>
-                            </div>
+                            <Plus size={10} /> Add Layer
                         </button>
                         <input
                             type="file"
@@ -358,6 +362,57 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             accept="audio/*"
                             className="hidden"
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        {audioLayers.length === 0 ? (
+                            <div className="text-center p-4 border border-dashed border-white/10 rounded-lg text-xs text-gray-500">
+                                No audio tracks loaded.
+                            </div>
+                        ) : (
+                            audioLayers.map(layer => (
+                                <div key={layer.id} className="bg-neutral-900 border border-white/5 rounded-lg p-2.5">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-2 overflow-hidden">
+                                            <Music size={12} className="text-cyan-500 shrink-0"/>
+                                            <span className="text-xs font-bold truncate text-gray-300" title={layer.name}>{layer.name}</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => onRemoveLayer(layer.id)}
+                                            className="text-neutral-500 hover:text-red-400 transition-colors"
+                                        >
+                                            <Trash2 size={12}/>
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="range" min="0" max="1" step="0.01"
+                                            value={layer.volume}
+                                            onChange={(e) => onUpdateLayer(layer.id, { volume: parseFloat(e.target.value) })}
+                                            className="flex-1 h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                            title={`Volume: ${Math.round(layer.volume * 100)}%`}
+                                        />
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                onClick={() => onUpdateLayer(layer.id, { muted: !layer.muted })}
+                                                className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold border transition-colors ${layer.muted ? 'bg-red-900/50 border-red-500/50 text-red-400' : 'bg-neutral-800 border-white/5 text-gray-400 hover:text-white'}`}
+                                                title="Mute"
+                                            >
+                                                M
+                                            </button>
+                                            <button
+                                                onClick={() => onUpdateLayer(layer.id, { solo: !layer.solo })}
+                                                className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold border transition-colors ${layer.solo ? 'bg-yellow-900/50 border-yellow-500/50 text-yellow-400' : 'bg-neutral-800 border-white/5 text-gray-400 hover:text-white'}`}
+                                                title="Solo"
+                                            >
+                                                S
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </section>
 
@@ -458,6 +513,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* CUSTOMIZE TAB */}
         {activeTab === 'customize' && (
           <div className="p-4 space-y-6">
+            {/* ... (Existing Customize Config - No changes needed here, just kept for context) ... */}
             
             {/* Resolution */}
             <section>
