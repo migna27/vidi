@@ -1,5 +1,3 @@
-
-
 import { LyricData, RendererConfig } from "./types";
 
 export const FONTS = [
@@ -13,6 +11,13 @@ export const FONTS = [
   'Cinzel',
   'Oswald',
   'Playfair Display'
+];
+
+export const RESOLUTIONS = [
+  { id: '16:9', name: 'Landscape (1920x1080)', width: 1920, height: 1080 },
+  { id: '9:16', name: 'Portrait (1080x1920)', width: 1080, height: 1920 },
+  { id: '1:1', name: 'Square (1080x1080)', width: 1080, height: 1080 },
+  { id: '4:5', name: 'Social (1080x1350)', width: 1080, height: 1350 }
 ];
 
 export const DEFAULT_LYRICS: LyricData = {
@@ -109,6 +114,7 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'neon-night',
     name: 'Neon Night',
+    resolutionId: '16:9',
     background: {
       type: 'solid',
       color: '#050505'
@@ -157,6 +163,7 @@ export const TEMPLATES: RendererConfig[] = [
   {
     id: 'cyber-glitch',
     name: 'Cyber Glitch',
+    resolutionId: '16:9',
     background: {
       type: 'procedural',
       color: '#000000',
@@ -205,395 +212,186 @@ export const TEMPLATES: RendererConfig[] = [
     keyframes: []
   },
   {
-    id: 'bubble-pop',
-    name: 'Bubble Pop',
-    background: {
-      type: 'solid',
-      color: '#fff7ed'
-    },
-    colors: {
-      text: '#4c1d95',
-      active: '#db2777',
-      secondary: '#fbbf24'
-    },
-    font: { family: 'Pacifico', weight: '400', italic: false },
-    animation: {
-      entrance: 'slam',
-      active: 'bounce',
-      exit: 'zoom'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 0.8,
-      visualizerStyle: 'orb'
-    },
-    effects: {
-      glow: 0.0,
-      blur: false,
-      chromaticAberration: false,
-      vignette: false,
-      scanlines: false,
-      filmGrain: false,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 50,
-      speed: 0.5,
-      shape: 'note',
-      color: ['#db2777', '#fbbf24', '#3b82f6', '#f472b6']
-    },
-    camera: {
-      shake: false,
-      zoomBeat: true,
-      rotate: true
-    },
+    id: 'synthwave',
+    name: 'Synthwave 80s',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#2b0057', proceduralStyle: 'grid', intensity: 0.8 },
+    colors: { text: '#ff00ff', active: '#00ffff', secondary: '#ffff00' },
+    font: { family: 'Permanent Marker', weight: '400', italic: false },
+    animation: { entrance: 'slide', active: 'wave', exit: 'zoom' },
+    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'spectrum' },
+    effects: { glow: 0.6, blur: false, chromaticAberration: true, vignette: true, scanlines: true, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 60, speed: 1.5, shape: 'triangle', color: ['#ff00ff', '#00ffff'] },
+    camera: { shake: false, zoomBeat: true, rotate: false },
     keyframes: []
   },
   {
-    id: 'minimalist',
-    name: 'Minimalist',
-    background: {
-      type: 'solid',
-      color: '#ffffff'
-    },
-    colors: {
-      text: '#171717',
-      active: '#000000',
-      secondary: '#737373'
-    },
-    font: { family: 'Bebas Neue', weight: '400', italic: false },
-    animation: {
-      entrance: 'fade',
-      active: 'pulse',
-      exit: 'fade'
-    },
-    audioReactivity: {
-      enabled: false,
-      sensitivity: 0.0,
-      visualizerStyle: 'none'
-    },
-    effects: {
-      glow: 0.0,
-      blur: false,
-      chromaticAberration: false,
-      vignette: false,
-      scanlines: false,
-      filmGrain: true,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: false,
-      count: 0,
-      speed: 0,
-      shape: 'circle',
-      color: []
-    },
-    camera: {
-      shake: false,
-      zoomBeat: false,
-      rotate: false
-    },
+    id: 'minimal-light',
+    name: 'Minimal Light',
+    resolutionId: '1:1',
+    background: { type: 'solid', color: '#ffffff' },
+    colors: { text: '#000000', active: '#ff3366', secondary: '#cccccc' },
+    font: { family: 'Oswald', weight: '700', italic: false },
+    animation: { entrance: 'fade', active: 'pulse', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'none' },
+    effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
+    camera: { shake: false, zoomBeat: false, rotate: false },
     keyframes: []
   },
   {
-    id: 'retro-synth',
-    name: 'Synthwave Sunset',
-    background: {
-      type: 'procedural',
-      color: '#2b0054',
-      proceduralStyle: 'grid',
-      intensity: 0.8
-    },
-    colors: {
-      text: '#facc15',
-      active: '#f472b6',
-      secondary: '#a855f7'
-    },
-    font: { family: 'Press Start 2P', weight: '400', italic: false },
-    animation: {
-      entrance: 'slide',
-      active: 'neon',
-      exit: 'zoom'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.0,
-      visualizerStyle: 'spectrum'
-    },
-    effects: {
-      glow: 0.9,
-      blur: true,
-      chromaticAberration: true,
-      vignette: true,
-      scanlines: true,
-      filmGrain: true,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 120,
-      speed: 2.5,
-      shape: 'triangle',
-      color: ['#f472b6', '#22d3ee', '#facc15']
-    },
-    camera: {
-      shake: true,
-      zoomBeat: true,
-      rotate: false
-    },
-    keyframes: []
-  },
-  {
-    id: 'cinematic-epic',
-    name: 'Cinematic Epic',
-    background: {
-      type: 'procedural',
-      color: '#0f172a',
-      proceduralStyle: 'stars',
-      intensity: 0.5
-    },
-    colors: {
-      text: '#e2e8f0',
-      active: '#fbbf24',
-      secondary: '#94a3b8'
-    },
+    id: 'cinematic-gold',
+    name: 'Cinematic Gold',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#0a0a0a' },
+    colors: { text: '#cfc09f', active: '#ffd700', secondary: '#8a7e5f' },
     font: { family: 'Cinzel', weight: '700', italic: false },
-    animation: {
-      entrance: 'fade',
-      active: 'pulse',
-      exit: 'fade'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 0.5,
-      visualizerStyle: 'none'
-    },
-    effects: {
-      glow: 0.6,
-      blur: true,
-      chromaticAberration: false,
-      vignette: true,
-      scanlines: false,
-      filmGrain: true,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 40,
-      speed: 0.1,
-      shape: 'circle',
-      color: ['#fbbf24', '#ffffff']
-    },
-    camera: {
-      shake: false,
-      zoomBeat: false,
-      rotate: false
-    },
+    animation: { entrance: 'zoom', active: 'neon', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'none' },
+    effects: { glow: 0.4, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 30, speed: 0.2, shape: 'circle', color: ['#ffd700', '#cfc09f'] },
+    camera: { shake: false, zoomBeat: false, rotate: false },
     keyframes: []
   },
   {
-    id: 'retro-vibe',
-    name: 'Retro Vibe',
-    background: {
-      type: 'solid',
-      color: '#78350f'
-    },
-    colors: {
-      text: '#fef3c7',
-      active: '#d97706',
-      secondary: '#92400e'
-    },
-    font: { family: 'Anton', weight: '400', italic: true },
-    animation: {
-      entrance: 'slide',
-      active: 'wave',
-      exit: 'slide'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 0.7,
-      visualizerStyle: 'shockwave'
-    },
-    effects: {
-      glow: 0.3,
-      blur: false,
-      chromaticAberration: false,
-      vignette: true,
-      scanlines: true,
-      filmGrain: true,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 60,
-      speed: 1.0,
-      shape: 'hexagon',
-      color: ['#d97706', '#fcd34d']
-    },
-    camera: {
-      shake: true,
-      zoomBeat: true,
-      rotate: true
-    },
-    keyframes: []
-  },
-  {
-    id: 'pixel-art',
-    name: 'Pixel Art',
-    background: {
-      type: 'solid',
-      color: '#1a1a1a'
-    },
-    colors: {
-      text: '#ffffff',
-      active: '#3b82f6',
-      secondary: '#ef4444'
-    },
+    id: '8bit-retro',
+    name: '8-Bit Retro',
+    resolutionId: '4:5',
+    background: { type: 'solid', color: '#2d2d2d' },
+    colors: { text: '#ffffff', active: '#facc15', secondary: '#ef4444' },
     font: { family: 'Press Start 2P', weight: '400', italic: false },
-    animation: {
-      entrance: 'glitch',
-      active: 'jitter',
-      exit: 'glitch'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.0,
-      visualizerStyle: 'spectrum'
-    },
-    effects: {
-      glow: 0.0,
-      blur: false,
-      chromaticAberration: false,
-      vignette: false,
-      scanlines: false,
-      filmGrain: false,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 200,
-      speed: 4.0,
-      shape: 'square',
-      color: ['#ffffff', '#3b82f6', '#ef4444']
-    },
-    camera: {
-      shake: true,
-      zoomBeat: false,
-      rotate: false
-    },
-    keyframes: []
-  },
-    {
-    id: 'soft-aurora',
-    name: 'Soft Aurora',
-    background: {
-      type: 'procedural',
-      color: '#0f172a',
-      proceduralStyle: 'plasma',
-      intensity: 0.5
-    },
-    colors: {
-      text: '#94a3b8',
-      active: '#2dd4bf',
-      secondary: '#38bdf8'
-    },
-    font: { family: 'Montserrat', weight: '700', italic: false },
-    animation: {
-      entrance: 'fade',
-      active: 'pulse',
-      exit: 'fade'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 0.6,
-      visualizerStyle: 'orb'
-    },
-    effects: {
-      glow: 0.3,
-      blur: true,
-      chromaticAberration: false,
-      vignette: true,
-      scanlines: false,
-      filmGrain: true,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 60,
-      speed: 0.2,
-      shape: 'circle',
-      color: ['#2dd4bf', '#38bdf8', '#818cf8']
-    },
-    camera: {
-      shake: false,
-      zoomBeat: true,
-      rotate: true
-    },
+    animation: { entrance: 'typewriter', active: 'bounce', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'spectrum' },
+    effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: true, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 20, speed: 1.0, shape: 'square', color: ['#facc15', '#ef4444', '#3b82f6'] },
+    camera: { shake: true, zoomBeat: true, rotate: false },
     keyframes: []
   },
   {
-    id: 'kinetic-pop',
-    name: 'Kinetic Pop',
-    background: {
-      type: 'procedural',
-      color: '#e5e5e5',
-      proceduralStyle: 'tunnel',
-      intensity: 0.7
-    },
-    colors: {
-      text: '#171717',
-      active: '#ef4444',
-      secondary: '#3b82f6'
-    },
-    font: { family: 'Montserrat', weight: '900', italic: false },
-    animation: {
-      entrance: 'slam',
-      active: 'jitter',
-      exit: 'slide'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.1,
-      visualizerStyle: 'shockwave'
-    },
-    effects: {
-      glow: 0.0,
-      blur: false,
-      chromaticAberration: true,
-      vignette: false,
-      scanlines: false,
-      filmGrain: false,
-      mirror: false,
-      invert: false,
-      barrelDistortion: false
-    },
-    particles: {
-      enabled: true,
-      count: 40,
-      speed: 4.0,
-      shape: 'triangle',
-      color: ['#ef4444', '#3b82f6', '#171717']
-    },
-    camera: {
-      shake: true,
-      zoomBeat: false,
-      rotate: false
-    },
+    id: 'deep-space',
+    name: 'Deep Space',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#020617', proceduralStyle: 'stars', intensity: 0.3 },
+    colors: { text: '#e2e8f0', active: '#60a5fa', secondary: '#1e293b' },
+    font: { family: 'Montserrat', weight: '300', italic: true },
+    animation: { entrance: 'fade', active: 'pulse', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
+    effects: { glow: 0.5, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 100, speed: 0.5, shape: 'star', color: ['#ffffff', '#60a5fa'] },
+    camera: { shake: false, zoomBeat: false, rotate: true },
+    keyframes: []
+  },
+  {
+    id: 'pop-art',
+    name: 'Pop Art',
+    resolutionId: '1:1',
+    background: { type: 'procedural', color: '#fbbf24', proceduralStyle: 'tunnel', intensity: 0.8 },
+    colors: { text: '#000000', active: '#dc2626', secondary: '#2563eb' },
+    font: { family: 'Bebas Neue', weight: '400', italic: false },
+    animation: { entrance: 'slam', active: 'bounce', exit: 'slide' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'shockwave' },
+    effects: { glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: true, filmGrain: false, mirror: false, invert: true, barrelDistortion: false },
+    particles: { enabled: true, count: 50, speed: 2.0, shape: 'circle', color: ['#dc2626', '#2563eb', '#ffffff'] },
+    camera: { shake: true, zoomBeat: true, rotate: false },
+    keyframes: []
+  },
+  {
+    id: 'smooth-jazz',
+    name: 'Smooth Jazz',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#2e1065', proceduralStyle: 'plasma', intensity: 0.4 },
+    colors: { text: '#f3e8ff', active: '#d8b4fe', secondary: '#6b21a8' },
+    font: { family: 'Lobster', weight: '400', italic: false },
+    animation: { entrance: 'fade', active: 'wave', exit: 'blur' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'none' },
+    effects: { glow: 0.7, blur: true, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 40, speed: 0.5, shape: 'note', color: ['#d8b4fe', '#f3e8ff'] },
+    camera: { shake: false, zoomBeat: true, rotate: false },
+    keyframes: []
+  },
+  {
+    id: 'glitch-horror',
+    name: 'Glitch Horror',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#000000' },
+    colors: { text: '#ff0000', active: '#ffffff', secondary: '#500000' },
+    font: { family: 'Anton', weight: '400', italic: false },
+    animation: { entrance: 'glitch', active: 'jitter', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
+    effects: { glow: 0.3, blur: false, chromaticAberration: true, vignette: true, scanlines: true, filmGrain: true, mirror: true, invert: false, barrelDistortion: true },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
+    camera: { shake: true, zoomBeat: false, rotate: true },
+    keyframes: []
+  },
+  // --- NEW TEMPLATES BELOW ---
+  {
+    id: 'neon-noir',
+    name: 'Neon Noir',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#0f0f0f', proceduralStyle: 'tunnel', intensity: 0.5 },
+    colors: { text: '#ffffff', active: '#ef4444', secondary: '#3b82f6' },
+    font: { family: 'Playfair Display', weight: '700', italic: true },
+    animation: { entrance: 'fade', active: 'neon', exit: 'blur' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'shockwave' },
+    effects: { glow: 0.9, blur: true, chromaticAberration: true, vignette: true, scanlines: false, filmGrain: true, mirror: true, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 100, speed: 2.0, shape: 'circle', color: ['#ef4444', '#ffffff', '#000000'] },
+    camera: { shake: true, zoomBeat: true, rotate: false },
+    keyframes: []
+  },
+  {
+    id: 'cyber-zen',
+    name: 'Cyber Zen',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#1a0b2e', proceduralStyle: 'grid', intensity: 0.3 },
+    colors: { text: '#d8b4fe', active: '#22d3ee', secondary: '#c084fc' },
+    font: { family: 'Montserrat', weight: '300', italic: false },
+    animation: { entrance: 'slide', active: 'wave', exit: 'zoom' },
+    audioReactivity: { enabled: true, sensitivity: 0.7, visualizerStyle: 'orb' },
+    effects: { glow: 0.8, blur: false, chromaticAberration: false, vignette: true, scanlines: false, filmGrain: false, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: true, count: 50, speed: 0.3, shape: 'hexagon', color: ['#22d3ee', '#c084fc'] },
+    camera: { shake: false, zoomBeat: true, rotate: true },
+    keyframes: []
+  },
+  {
+    id: 'hacker-terminal',
+    name: 'Hacker Terminal',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#000000' },
+    colors: { text: '#22c55e', active: '#86efac', secondary: '#14532d' },
+    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    animation: { entrance: 'typewriter', active: 'jitter', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'spectrum' },
+    effects: { glow: 0.4, blur: false, chromaticAberration: false, vignette: true, scanlines: true, filmGrain: true, mirror: false, invert: false, barrelDistortion: false },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [] },
+    camera: { shake: true, zoomBeat: false, rotate: false },
+    keyframes: []
+  },
+  {
+    id: 'electric-dreams',
+    name: 'Electric Dreams',
+    resolutionId: '9:16',
+    background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: 'plasma', intensity: 1.2 },
+    colors: { text: '#ffffff', active: '#f472b6', secondary: '#3b82f6' },
+    font: { family: 'Permanent Marker', weight: '400', italic: false },
+    animation: { entrance: 'slam', active: 'bounce', exit: 'slide' },
+    audioReactivity: { enabled: true, sensitivity: 1.4, visualizerStyle: 'shockwave' },
+    effects: { glow: 1.0, blur: true, chromaticAberration: true, vignette: false, scanlines: false, filmGrain: false, mirror: false, invert: true, barrelDistortion: false },
+    particles: { enabled: true, count: 80, speed: 2.5, shape: 'star', color: ['#f472b6', '#3b82f6', '#ffff00'] },
+    camera: { shake: true, zoomBeat: true, rotate: false },
+    keyframes: []
+  },
+  {
+    id: 'night-city',
+    name: 'Night City',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#020617', proceduralStyle: 'stars', intensity: 2.0 },
+    colors: { text: '#facc15', active: '#06b6d4', secondary: '#ec4899' },
+    font: { family: 'Anton', weight: '400', italic: false },
+    animation: { entrance: 'zoom', active: 'rotate', exit: 'slide' },
+    audioReactivity: { enabled: true, sensitivity: 0.9, visualizerStyle: 'orb' },
+    effects: { glow: 0.6, blur: true, chromaticAberration: true, vignette: true, scanlines: false, filmGrain: true, mirror: false, invert: false, barrelDistortion: true },
+    particles: { enabled: true, count: 120, speed: 3.0, shape: 'triangle', color: ['#06b6d4', '#ec4899', '#facc15'] },
+    camera: { shake: false, zoomBeat: true, rotate: true },
     keyframes: []
   }
 ];

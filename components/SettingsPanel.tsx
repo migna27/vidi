@@ -1,24 +1,27 @@
 
-
 import React, { useState, useRef } from 'react';
-import { X, Check, Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2 } from 'lucide-react';
-import { TEMPLATES, FONTS } from '../constants';
-import { RendererConfig, AnimationStyle, ActiveStyle, ParticleShape, BackgroundType, ProceduralStyle, AnimationKeyframe } from '../types';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio } from 'lucide-react';
+import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
+import { RendererConfig, AnimationKeyframe } from '../types';
 
 interface SettingsPanelProps {
   config: RendererConfig;
   onUpdate: (config: RendererConfig) => void;
-  onClose: () => void;
   currentTime: number;
+  // File Handlers moved here
+  onJsonUpload: (jsonStr: string) => void;
+  onSrtUpload: (srtStr: string) => void;
+  onAudioUpload: (file: File) => void;
+  audioName?: string;
 }
 
 // Helper Components
 const ToggleInput = ({ label, value, onChange }: { label: string, value: boolean, onChange: (v: boolean) => void }) => (
   <div className="flex items-center justify-between">
-    <span className="text-sm font-medium text-gray-300">{label}</span>
+    <span className="text-sm font-medium text-gray-400">{label}</span>
     <button
       onClick={() => onChange(!value)}
-      className={`w-10 h-5 rounded-full relative transition-colors ${value ? 'bg-cyan-500' : 'bg-gray-700'}`}
+      className={`w-10 h-5 rounded-full relative transition-colors ${value ? 'bg-cyan-600' : 'bg-neutral-700'}`}
     >
       <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${value ? 'translate-x-5' : 'translate-x-0'}`} />
     </button>
@@ -27,11 +30,11 @@ const ToggleInput = ({ label, value, onChange }: { label: string, value: boolean
 
 const SelectInput = ({ label, value, options, onChange }: { label: string, value: string, options: string[], onChange: (v: any) => void }) => (
   <div className="flex flex-col gap-1">
-    <label className="text-xs font-bold text-gray-400 uppercase">{label}</label>
+    <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="bg-neutral-800 border border-white/10 rounded-md px-2 py-1.5 text-sm text-white focus:border-cyan-500 outline-none"
+      className="bg-neutral-900 border border-white/10 rounded-md px-2 py-1.5 text-sm text-gray-200 focus:border-cyan-500 outline-none"
     >
       {options.map(opt => (
         <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
@@ -41,7 +44,7 @@ const SelectInput = ({ label, value, options, onChange }: { label: string, value
 );
 
 const ColorInput = ({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) => (
-  <div className="flex items-center justify-between bg-neutral-800 p-2 rounded-md border border-white/5">
+  <div className="flex items-center justify-between bg-neutral-900 p-2 rounded-md border border-white/5">
     <span className="text-xs font-bold text-gray-400">{label}</span>
     <div className="flex items-center gap-2">
       <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: value }}></div>
@@ -56,11 +59,116 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
   </div>
 );
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, onClose, currentTime }) => {
-  const [activeTab, setActiveTab] = useState<'templates' | 'customize' | 'timeline'>('templates');
+interface KeyframeEditorProps {
+    keyframe: AnimationKeyframe;
+    defaults: RendererConfig;
+    onUpdate: (id: string, updates: Partial<AnimationKeyframe> | Partial<AnimationKeyframe['values']>) => void;
+    onDelete: (id: string) => void;
+}
+
+const KeyframeEditor: React.FC<KeyframeEditorProps> = ({ keyframe, defaults, onUpdate, onDelete }) => {
+    return (
+        <div className="bg-neutral-900 p-4 rounded-xl border border-white/10 space-y-4 shadow-lg">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                 <h4 className="font-bold text-sm text-cyan-400 flex items-center gap-2">
+                    <Sliders size={14} /> Edit Keyframe
+                 </h4>
+                 <button 
+                    onClick={() => onDelete(keyframe.id)}
+                    className="text-red-400 hover:text-red-300 p-1 hover:bg-red-900/20 rounded transition-colors"
+                    title="Delete Keyframe"
+                 >
+                    <Trash2 size={16} />
+                 </button>
+            </div>
+            
+            <div className="flex flex-col gap-1">
+                 <label className="text-xs font-bold text-gray-400 uppercase flex items-center gap-1">
+                    <Timer size={12} /> Timestamp (seconds)
+                 </label>
+                 <input 
+                    type="number" 
+                    step="0.1"
+                    min="0"
+                    value={keyframe.time.toFixed(2)}
+                    onChange={(e) => onUpdate(keyframe.id, { time: parseFloat(e.target.value) })}
+                    className="bg-black border border-white/10 rounded-md px-2 py-1.5 text-sm text-white focus:border-cyan-500 outline-none font-mono"
+                 />
+            </div>
+
+            <div className="space-y-3 pt-2 border-t border-white/5">
+                <ColorInput 
+                    label="Active Color" 
+                    value={keyframe.values.colors_active || defaults.colors.active} 
+                    onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, colors_active: v } })} 
+                />
+                <ColorInput 
+                    label="Background Color" 
+                    value={keyframe.values.background_color || defaults.background.color} 
+                    onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, background_color: v } })} 
+                />
+                
+                <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Glow Intensity</span>
+                        <span>{Math.round((keyframe.values.effects_glow ?? defaults.effects.glow) * 100)}%</span>
+                    </div>
+                    <input 
+                        type="range" min="0" max="1" step="0.1" 
+                        value={keyframe.values.effects_glow ?? defaults.effects.glow} 
+                        onChange={(e) => onUpdate(keyframe.id, { values: { ...keyframe.values, effects_glow: parseFloat(e.target.value) } })}
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                </div>
+
+                <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Camera Zoom (Offset)</span>
+                        <span>{keyframe.values.camera_zoom?.toFixed(2) || 0}</span>
+                    </div>
+                    <input 
+                        type="range" min="-0.5" max="2.0" step="0.1" 
+                        value={keyframe.values.camera_zoom || 0} 
+                        onChange={(e) => onUpdate(keyframe.id, { values: { ...keyframe.values, camera_zoom: parseFloat(e.target.value) } })}
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                </div>
+
+                <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Camera Rotate (Rad)</span>
+                        <span>{keyframe.values.camera_rotate?.toFixed(2) || 0}</span>
+                    </div>
+                    <input 
+                        type="range" min="-3.14" max="3.14" step="0.1" 
+                        value={keyframe.values.camera_rotate || 0} 
+                        onChange={(e) => onUpdate(keyframe.id, { values: { ...keyframe.values, camera_rotate: parseFloat(e.target.value) } })}
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
+    config, 
+    onUpdate, 
+    currentTime,
+    onAudioUpload,
+    onJsonUpload,
+    onSrtUpload,
+    audioName
+}) => {
+  const [activeTab, setActiveTab] = useState<'project' | 'templates' | 'customize' | 'timeline'>('project');
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
+  
+  // Refs for Project Files
+  const jsonInputRef = useRef<HTMLInputElement>(null);
+  const srtInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   const handleTemplateSelect = (template: RendererConfig) => {
     onUpdate(JSON.parse(JSON.stringify(template)));
@@ -108,6 +216,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
     }
   };
 
+  // File Handlers for Project Tab
+  const handleJsonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) onJsonUpload(event.target.result as string);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleSrtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) onSrtUpload(event.target.result as string);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onAudioUpload(file);
+  };
+
   // Keyframe Logic
   const addKeyframe = () => {
     const newKeyframe: AnimationKeyframe = {
@@ -127,11 +261,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
     setSelectedKeyframeId(newKeyframe.id);
   };
 
-  const updateKeyframe = (id: string, values: Partial<AnimationKeyframe['values']>) => {
-     const newConfig = { ...config };
-     newConfig.keyframes = newConfig.keyframes.map(kf => 
-       kf.id === id ? { ...kf, values: { ...kf.values, ...values } } : kf
-     );
+  const updateKeyframe = (id: string, updates: Partial<AnimationKeyframe> | Partial<AnimationKeyframe['values']>) => {
+     let newConfig = { ...config };
+     newConfig.keyframes = newConfig.keyframes.map(kf => {
+         if (kf.id === id) {
+             if ('values' in updates) {
+                 return { ...kf, values: { ...kf.values, ...(updates as any).values } };
+             } else {
+                 return { ...kf, ...updates };
+             }
+         }
+         return kf;
+     });
+
+     if ('time' in updates) {
+         newConfig.keyframes.sort((a, b) => a.time - b.time);
+     }
      onUpdate(newConfig);
   };
 
@@ -145,68 +290,164 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
   const selectedKeyframe = config.keyframes?.find(k => k.id === selectedKeyframeId);
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-[400px] bg-neutral-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-[60] text-white flex flex-col transition-transform duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-white/10">
-        <h2 className="text-lg font-bold flex items-center gap-2">
-           <Sparkles className="text-cyan-400" size={20}/>
-           Visual Config
-        </h2>
-        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-          <X size={20} />
+    <div className="h-full flex flex-col bg-neutral-800 border-r border-white/5 text-gray-200">
+      
+      {/* Tab Navigation */}
+      <div className="flex border-b border-white/5 bg-neutral-900">
+        <button 
+          onClick={() => setActiveTab('project')}
+          title="Project Files"
+          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'project' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+        >
+          <FolderOpen size={18} />
+          Project
         </button>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-white/10">
         <button 
           onClick={() => setActiveTab('templates')}
-          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'templates' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
+          title="Templates"
+          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'templates' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <LayoutTemplate size={16} /> Templates
+          <LayoutTemplate size={18} />
+          Presets
         </button>
         <button 
           onClick={() => setActiveTab('customize')}
-          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'customize' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
+          title="Customize"
+          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'customize' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <Sliders size={16} /> Customize
+          <Sliders size={18} />
+          Adjust
         </button>
         <button 
           onClick={() => setActiveTab('timeline')}
-          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'timeline' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
+          title="Keyframes"
+          className={`flex-1 py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'timeline' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
         >
-          <Clock size={16} /> Timeline
+          <Clock size={18} />
+          Keys
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar bg-neutral-800">
         
+        {/* PROJECT TAB */}
+        {activeTab === 'project' && (
+             <div className="p-4 space-y-6">
+                <section>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Music size={14}/> Audio Source
+                    </h3>
+                    <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                        <button
+                            onClick={() => audioInputRef.current?.click()}
+                            className="w-full flex items-center gap-3 px-3 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/10 group"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-cyan-900/30 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-900/50 transition-colors">
+                                <FileAudio size={20} />
+                            </div>
+                            <div className="flex flex-col items-start overflow-hidden">
+                                <span className="text-sm font-bold text-gray-200 truncate w-full text-left">{audioName || 'No Audio Selected'}</span>
+                                <span className="text-xs text-gray-500">Click to replace</span>
+                            </div>
+                        </button>
+                        <input
+                            type="file"
+                            ref={audioInputRef}
+                            onChange={handleAudioChange}
+                            accept="audio/*"
+                            className="hidden"
+                        />
+                    </div>
+                </section>
+
+                <section>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Type size={14}/> Lyrics Source
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                         <button
+                            onClick={() => jsonInputRef.current?.click()}
+                            className="flex flex-col items-center justify-center gap-2 p-4 bg-neutral-900 hover:bg-neutral-700 rounded-lg border border-white/5 transition-colors group"
+                        >
+                            <FileJson size={24} className="text-gray-500 group-hover:text-purple-400" />
+                            <span className="text-xs font-bold text-gray-400 group-hover:text-white">Import JSON</span>
+                        </button>
+                        <input
+                            type="file"
+                            ref={jsonInputRef}
+                            onChange={handleJsonChange}
+                            accept=".json,application/json"
+                            className="hidden"
+                        />
+
+                         <button
+                            onClick={() => srtInputRef.current?.click()}
+                            className="flex flex-col items-center justify-center gap-2 p-4 bg-neutral-900 hover:bg-neutral-700 rounded-lg border border-white/5 transition-colors group"
+                        >
+                            <FileText size={24} className="text-gray-500 group-hover:text-orange-400" />
+                            <span className="text-xs font-bold text-gray-400 group-hover:text-white">Import SRT</span>
+                        </button>
+                        <input
+                            type="file"
+                            ref={srtInputRef}
+                            onChange={handleSrtChange}
+                            accept=".srt"
+                            className="hidden"
+                        />
+                    </div>
+                </section>
+
+                <section>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                         <ImageIcon size={14}/> Assets
+                    </h3>
+                    <div className="space-y-2">
+                         <button 
+                            onClick={() => bgInputRef.current?.click()}
+                            className="w-full flex items-center justify-start gap-3 px-3 py-2 bg-neutral-900 hover:bg-neutral-700 rounded-lg border border-white/5 transition-colors text-sm text-gray-300"
+                        >
+                            <Upload size={16} className="text-gray-500"/>
+                            Upload Background Media
+                        </button>
+                        <input type="file" ref={bgInputRef} onChange={handleBgUpload} accept="image/*,video/*" className="hidden"/>
+
+                        <button 
+                            onClick={() => fontInputRef.current?.click()}
+                            className="w-full flex items-center justify-start gap-3 px-3 py-2 bg-neutral-900 hover:bg-neutral-700 rounded-lg border border-white/5 transition-colors text-sm text-gray-300"
+                        >
+                             <Type size={16} className="text-gray-500"/>
+                             Upload Custom Font
+                        </button>
+                        <input type="file" ref={fontInputRef} onChange={handleFontUpload} accept=".ttf,.woff,.woff2,.otf" className="hidden"/>
+                    </div>
+                </section>
+             </div>
+        )}
+
         {/* TEMPLATES TAB */}
         {activeTab === 'templates' && (
-          <div className="p-4 grid grid-cols-1 gap-4">
+          <div className="p-4 grid grid-cols-1 gap-3">
             {TEMPLATES.map((t) => (
               <div 
                 key={t.id}
                 onClick={() => handleTemplateSelect(t)}
-                className={`group relative overflow-hidden rounded-xl border-2 cursor-pointer transition-all duration-300 ${config.id === t.id ? 'border-cyan-400 bg-white/10' : 'border-white/10 hover:border-white/30 bg-black/40'}`}
+                className={`group relative overflow-hidden rounded-lg border-2 cursor-pointer transition-all duration-200 ${config.id === t.id ? 'border-cyan-500 bg-white/5' : 'border-transparent hover:border-white/10 bg-neutral-900'}`}
               >
-                <div className="p-4 relative z-10">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-lg group-hover:text-cyan-300 transition-colors">{t.name}</h3>
-                    {config.id === t.id && <Check size={18} className="text-cyan-400" />}
+                <div className="p-3 relative z-10">
+                  <div className="flex justify-between items-center mb-1">
+                    <h3 className="font-bold text-sm text-gray-200 group-hover:text-cyan-300 transition-colors">{t.name}</h3>
                   </div>
                   
-                  {/* Color Preview Miniatures */}
-                  <div className="flex gap-2">
-                       <div className="w-6 h-6 rounded-full border border-white/20 shadow-sm" style={{ background: t.background.color }} title="Background"></div>
-                       <div className="w-6 h-6 rounded-full border border-white/20 shadow-sm" style={{ background: t.colors.text }} title="Text"></div>
-                       <div className="w-6 h-6 rounded-full border border-white/20 shadow-sm" style={{ background: t.colors.active }} title="Active"></div>
+                  <div className="flex gap-1.5 mb-2">
+                       <div className="w-4 h-4 rounded-full border border-white/10 shadow-sm" style={{ background: t.background.color }} />
+                       <div className="w-4 h-4 rounded-full border border-white/10 shadow-sm" style={{ background: t.colors.text }} />
+                       <div className="w-4 h-4 rounded-full border border-white/10 shadow-sm" style={{ background: t.colors.active }} />
                   </div>
                   
-                  <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-white/10 rounded-md text-gray-400">{t.animation.active}</span>
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 bg-white/10 rounded-md text-gray-400">{t.background.type}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 bg-neutral-800 rounded text-gray-500">{t.animation.active}</span>
+                      <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 bg-neutral-800 rounded text-gray-500">{t.background.type}</span>
                   </div>
                 </div>
               </div>
@@ -218,14 +459,35 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
         {activeTab === 'customize' && (
           <div className="p-4 space-y-6">
             
-            {/* Audio Reactivity Section */}
+            {/* Resolution */}
+            <section>
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Monitor size={14}/> Output Settings
+                </h3>
+                <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                    <SelectInput 
+                        label="Resolution / Aspect Ratio"
+                        value={config.resolutionId}
+                        options={RESOLUTIONS.map(r => r.id)}
+                        onChange={(v) => {
+                             const newConfig = { ...config, resolutionId: v };
+                             onUpdate(newConfig);
+                        }}
+                    />
+                    <div className="mt-2 text-[10px] text-gray-500 text-right">
+                        {RESOLUTIONS.find(r => r.id === config.resolutionId)?.name}
+                    </div>
+                </div>
+            </section>
+
+            {/* Audio Reactivity */}
             <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                 <Music size={14}/> Audio Reactivity
               </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                  <ToggleInput 
-                    label="Audio Reactive Effects" 
+                    label="Enabled" 
                     value={config.audioReactivity.enabled} 
                     onChange={(v) => updateNested('audioReactivity', 'enabled', v)} 
                  />
@@ -240,14 +502,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                         />
                         <div className="pt-2">
                             <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Beat Sensitivity</span>
+                                <span>Sensitivity</span>
                                 <span>{Math.round(config.audioReactivity.sensitivity * 100)}%</span>
                             </div>
                             <input 
                                 type="range" min="0.5" max="2.0" step="0.1" 
                                 value={config.audioReactivity.sensitivity} 
                                 onChange={(e) => updateNested('audioReactivity', 'sensitivity', parseFloat(e.target.value))}
-                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                             />
                         </div>
                     </>
@@ -255,12 +517,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
               </div>
             </section>
 
-            {/* Background Section */}
+            {/* Background */}
             <section>
                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                    <ImageIcon size={14}/> Background
+                    <ImageIcon size={14}/> Background Config
                 </h3>
-                <div className="bg-white/5 p-3 rounded-lg space-y-3">
+                <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                     <SelectInput 
                       label="Type" 
                       value={config.background.type} 
@@ -270,20 +532,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
 
                     {config.background.type === 'solid' && (
                         <ColorInput label="Color" value={config.background.color} onChange={(v) => updateNested('background', 'color', v)} />
-                    )}
-
-                    {(config.background.type === 'image' || config.background.type === 'video') && (
-                        <div>
-                             <button 
-                                onClick={() => bgInputRef.current?.click()}
-                                className="w-full flex items-center justify-center gap-2 py-2 border-2 border-dashed border-white/20 rounded-md hover:border-cyan-400 hover:text-cyan-400 transition-all text-sm font-bold"
-                             >
-                                <Upload size={16} />
-                                {config.background.type === 'video' ? 'Upload Video' : 'Upload Image'}
-                             </button>
-                             <input type="file" ref={bgInputRef} onChange={handleBgUpload} accept="image/*,video/*" className="hidden"/>
-                             {config.background.url && <div className="text-[10px] text-gray-500 mt-1 truncate">{config.background.url}</div>}
-                        </div>
                     )}
 
                     {config.background.type === 'procedural' && (
@@ -297,14 +545,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                              />
                              <div className="pt-2">
                                 <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                    <span>Intensity/Speed</span>
+                                    <span>Intensity</span>
                                     <span>{Math.round((config.background.intensity || 0.5) * 100)}%</span>
                                 </div>
                                 <input 
                                     type="range" min="0.1" max="2.0" step="0.1" 
                                     value={config.background.intensity || 0.5} 
                                     onChange={(e) => updateNested('background', 'intensity', parseFloat(e.target.value))}
-                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                                 />
                              </div>
                         </>
@@ -312,45 +560,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                 </div>
             </section>
 
-            {/* Colors Section */}
+            {/* Colors */}
             <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Palette size={14}/> Text Colors
+                <Palette size={14}/> Palette
               </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <ColorInput label="Text" value={config.colors.text} onChange={(v) => updateColor('text', v)} />
-                <ColorInput label="Active" value={config.colors.active} onChange={(v) => updateColor('active', v)} />
-                <ColorInput label="Secondary" value={config.colors.secondary} onChange={(v) => updateColor('secondary', v)} />
+              <div className="space-y-2">
+                <ColorInput label="Main Text" value={config.colors.text} onChange={(v) => updateColor('text', v)} />
+                <ColorInput label="Active Word" value={config.colors.active} onChange={(v) => updateColor('active', v)} />
+                <ColorInput label="Accents/Shadows" value={config.colors.secondary} onChange={(v) => updateColor('secondary', v)} />
               </div>
             </section>
 
-             {/* Font Section */}
+            {/* Font */}
              <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                 <Type size={14}/> Typography
               </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                 <SelectInput 
                    label="Font Family"
                    value={config.font.family}
-                   options={[...FONTS]} // Using constants
+                   options={[...FONTS]} 
                    onChange={(v) => updateNested('font', 'family', v)}
                 />
-                <button 
-                  onClick={() => fontInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-1.5 text-xs bg-neutral-800 border border-white/10 rounded-md hover:text-cyan-400 transition-colors"
-                >
-                   <Upload size={12}/> Upload Font (.ttf/.woff)
-                </button>
-                <input type="file" ref={fontInputRef} onChange={handleFontUpload} accept=".ttf,.woff,.woff2,.otf" className="hidden"/>
 
                 <div className="flex gap-3">
-                    <SelectInput 
-                        label="Weight" 
-                        value={config.font.weight} 
-                        options={['100', '300', '400', '700', '900']} 
-                        onChange={(v) => updateNested('font', 'weight', v)}
-                    />
+                    <div className="flex-1">
+                        <SelectInput 
+                            label="Weight" 
+                            value={config.font.weight} 
+                            options={['100', '300', '400', '700', '900']} 
+                            onChange={(v) => updateNested('font', 'weight', v)}
+                        />
+                    </div>
                     <div className="flex-1 pt-6">
                         <ToggleInput label="Italic" value={config.font.italic} onChange={(v) => updateNested('font', 'italic', v)}/>
                     </div>
@@ -358,14 +601,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
               </div>
             </section>
 
-            {/* Animation Section */}
+            {/* Animation */}
             <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Video size={14}/> Animation
+                <Video size={14}/> Animation Style
               </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                 <SelectInput 
-                   label="Entrance" 
+                   label="In" 
                    value={config.animation.entrance} 
                    options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch']} 
                    onChange={(v) => updateNested('animation', 'entrance', v)} 
@@ -377,7 +620,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                    onChange={(v) => updateNested('animation', 'active', v)} 
                 />
                 <SelectInput 
-                   label="Exit" 
+                   label="Out" 
                    value={config.animation.exit} 
                    options={['fade', 'slide', 'slam', 'zoom', 'blur', 'glitch']} 
                    onChange={(v) => updateNested('animation', 'exit', v)} 
@@ -385,43 +628,43 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
               </div>
             </section>
 
-            {/* Effects Section */}
+            {/* Effects */}
             <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Aperture size={14}/> VFX & Post-Processing
+                <Aperture size={14}/> VFX
               </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                  <div className="pb-2">
                     <div className="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Glow Intensity</span>
+                        <span>Glow</span>
                         <span>{Math.round(config.effects.glow * 100)}%</span>
                     </div>
                     <input 
                         type="range" min="0" max="1" step="0.1" 
                         value={config.effects.glow} 
                         onChange={(e) => updateNested('effects', 'glow', parseFloat(e.target.value))}
-                        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                     />
                  </div>
-                 <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     <ToggleInput label="Blur" value={config.effects.blur} onChange={(v) => updateNested('effects', 'blur', v)} />
                     <ToggleInput label="Chromatic" value={config.effects.chromaticAberration} onChange={(v) => updateNested('effects', 'chromaticAberration', v)} />
                     <ToggleInput label="Vignette" value={config.effects.vignette} onChange={(v) => updateNested('effects', 'vignette', v)} />
                     <ToggleInput label="Scanlines" value={config.effects.scanlines} onChange={(v) => updateNested('effects', 'scanlines', v)} />
                     <ToggleInput label="Film Grain" value={config.effects.filmGrain} onChange={(v) => updateNested('effects', 'filmGrain', v)} />
                     <ToggleInput label="Mirror" value={config.effects.mirror} onChange={(v) => updateNested('effects', 'mirror', v)} />
-                    <ToggleInput label="Invert (Beat)" value={config.effects.invert} onChange={(v) => updateNested('effects', 'invert', v)} />
-                    <ToggleInput label="Distortion" value={config.effects.barrelDistortion} onChange={(v) => updateNested('effects', 'barrelDistortion', v)} />
+                    <ToggleInput label="Inv. Beat" value={config.effects.invert} onChange={(v) => updateNested('effects', 'invert', v)} />
+                    <ToggleInput label="Distort" value={config.effects.barrelDistortion} onChange={(v) => updateNested('effects', 'barrelDistortion', v)} />
                  </div>
               </div>
             </section>
             
-            {/* Particles Section */}
+            {/* Particles */}
             <section>
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                 <Grid size={14}/> Particles
               </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
+              <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                   <ToggleInput label="Enabled" value={config.particles.enabled} onChange={(v) => updateNested('particles', 'enabled', v)} />
                   
                   {config.particles.enabled && (
@@ -442,7 +685,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                                     type="range" min="0" max="300" step="10" 
                                     value={config.particles.count} 
                                     onChange={(e) => updateNested('particles', 'count', parseInt(e.target.value))}
-                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                                 />
                             </div>
                              <div>
@@ -454,7 +697,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                                     type="range" min="0" max="5.0" step="0.1" 
                                     value={config.particles.speed} 
                                     onChange={(e) => updateNested('particles', 'speed', parseFloat(e.target.value))}
-                                    className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                                 />
                             </div>
                         </div>
@@ -462,19 +705,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
                   )}
               </div>
             </section>
-            
-            {/* Camera Section */}
-            <section>
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Camera size={14}/> Camera
-              </h3>
-              <div className="bg-white/5 p-3 rounded-lg space-y-3">
-                  <ToggleInput label="Bass Shake" value={config.camera.shake} onChange={(v) => updateNested('camera', 'shake', v)} />
-                  <ToggleInput label="Zoom on Beat" value={config.camera.zoomBeat} onChange={(v) => updateNested('camera', 'zoomBeat', v)} />
-                  <ToggleInput label="Rotation" value={config.camera.rotate} onChange={(v) => updateNested('camera', 'rotate', v)} />
-              </div>
-            </section>
-
           </div>
         )}
 
@@ -483,93 +713,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
            <div className="p-4 flex flex-col h-full">
                <button
                   onClick={addKeyframe}
-                  className="mb-4 w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg font-bold hover:shadow-lg hover:shadow-cyan-500/20 transition-all active:scale-95"
+                  className="mb-4 w-full flex items-center justify-center gap-2 py-3 bg-cyan-700 hover:bg-cyan-600 rounded-lg font-bold text-sm transition-all"
                >
-                   <Plus size={18} /> Add Keyframe at {new Date(currentTime * 1000).toISOString().substr(14, 5)}
+                   <Plus size={16} /> Add Keyframe at {new Date(currentTime * 1000).toISOString().substr(14, 5)}
                </button>
                
                <div className="flex-1 overflow-y-auto space-y-2 mb-4">
                   {(config.keyframes || []).length === 0 ? (
-                      <div className="text-center text-gray-500 text-sm mt-10">
-                          No keyframes added. <br/> Values will remain static.
+                      <div className="text-center text-gray-600 text-xs mt-10">
+                          No keyframes.<br/>Values are static.
                       </div>
                   ) : (
                       (config.keyframes || []).map((kf, idx) => (
                           <div 
                               key={kf.id}
                               onClick={() => setSelectedKeyframeId(kf.id)}
-                              className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${selectedKeyframeId === kf.id ? 'bg-cyan-500/20 border-cyan-500' : 'bg-neutral-800 border-white/5 hover:border-white/20'}`}
+                              className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${selectedKeyframeId === kf.id ? 'bg-cyan-900/30 border-cyan-500/50' : 'bg-neutral-900 border-white/5 hover:border-white/20'}`}
                           >
                               <div className="flex flex-col">
-                                  <span className="font-mono font-bold text-sm">Keyframe {idx + 1}</span>
-                                  <span className="text-xs text-gray-400">{new Date(kf.time * 1000).toISOString().substr(14, 5)}s</span>
+                                  <span className="font-mono font-bold text-xs text-gray-300">Keyframe {idx + 1}</span>
+                                  <span className="text-[10px] text-gray-500">{new Date(kf.time * 1000).toISOString().substr(14, 5)}s</span>
                               </div>
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); deleteKeyframe(kf.id); }}
-                                className="text-gray-500 hover:text-red-500 p-2"
-                              >
-                                  <Trash2 size={16} />
-                              </button>
                           </div>
                       ))
                   )}
                </div>
 
-               {/* Editor for Selected Keyframe */}
                {selectedKeyframe && (
-                   <div className="bg-neutral-800 p-4 rounded-xl border border-white/10 space-y-3 animate-in fade-in slide-in-from-bottom-4">
-                        <h4 className="font-bold text-sm text-cyan-400 mb-2">Edit Keyframe</h4>
-                        
-                        <ColorInput 
-                            label="Active Color" 
-                            value={selectedKeyframe.values.colors_active || config.colors.active} 
-                            onChange={(v) => updateKeyframe(selectedKeyframe.id, { colors_active: v })} 
-                        />
-                        <ColorInput 
-                            label="Background Color" 
-                            value={selectedKeyframe.values.background_color || config.background.color} 
-                            onChange={(v) => updateKeyframe(selectedKeyframe.id, { background_color: v })} 
-                        />
-                        
-                        <div>
-                            <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Glow</span>
-                                <span>{Math.round((selectedKeyframe.values.effects_glow ?? config.effects.glow) * 100)}%</span>
-                            </div>
-                            <input 
-                                type="range" min="0" max="1" step="0.1" 
-                                value={selectedKeyframe.values.effects_glow ?? config.effects.glow} 
-                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { effects_glow: parseFloat(e.target.value) })}
-                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                            />
-                        </div>
-
-                         <div>
-                            <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Camera Zoom (Offset)</span>
-                                <span>{selectedKeyframe.values.camera_zoom?.toFixed(2) || 0}</span>
-                            </div>
-                            <input 
-                                type="range" min="-0.5" max="2.0" step="0.1" 
-                                value={selectedKeyframe.values.camera_zoom || 0} 
-                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { camera_zoom: parseFloat(e.target.value) })}
-                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                            />
-                        </div>
-
-                         <div>
-                            <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                <span>Camera Rotate (Rad)</span>
-                                <span>{selectedKeyframe.values.camera_rotate?.toFixed(2) || 0}</span>
-                            </div>
-                            <input 
-                                type="range" min="-3.14" max="3.14" step="0.1" 
-                                value={selectedKeyframe.values.camera_rotate || 0} 
-                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { camera_rotate: parseFloat(e.target.value) })}
-                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                            />
-                        </div>
-                   </div>
+                   <KeyframeEditor 
+                      keyframe={selectedKeyframe} 
+                      defaults={config} 
+                      onUpdate={updateKeyframe} 
+                      onDelete={deleteKeyframe}
+                   />
                )}
            </div>
         )}

@@ -1,7 +1,6 @@
-
-
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe } from '../types';
+import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
   data: LyricData;
@@ -13,10 +12,6 @@ export interface CanvasVideoRendererRef {
   drawFrame: (time: number, analysisData: AudioVisualizerData) => void;
   canvas: HTMLCanvasElement | null;
 }
-
-// 16:9 Full HD Canvas
-const CANVAS_WIDTH = 1920;
-const CANVAS_HEIGHT = 1080;
 
 interface Particle {
   id: number;
@@ -71,7 +66,7 @@ const lerpColor = (start: string, end: string, t: number) => {
 };
 
 // Helper for Procedural Grid
-const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
+const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number) => {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
@@ -79,74 +74,74 @@ const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, sp
     ctx.shadowColor = color;
     
     // Horizon line
-    const horizon = CANVAS_HEIGHT * 0.55;
+    const horizon = h * 0.55;
     
     // Vertical lines (perspective)
-    const centerX = CANVAS_WIDTH / 2;
+    const centerX = w / 2;
     for (let i = -10; i <= 10; i++) {
         const x = centerX + (i * 200);
         ctx.beginPath();
         ctx.moveTo(centerX, horizon); // Vanishing point
-        ctx.lineTo(x + (i * 300), CANVAS_HEIGHT);
+        ctx.lineTo(x + (i * 300), h);
         ctx.stroke();
     }
     
     // Horizontal lines (moving)
     const offset = (time * 200 * speed) % 100;
-    for(let y = horizon; y < CANVAS_HEIGHT; y += 20 + ((y-horizon)*0.1)) {
+    for(let y = horizon; y < h; y += 20 + ((y-horizon)*0.1)) {
         const moveY = y + offset;
-        if(moveY > CANVAS_HEIGHT) continue;
+        if(moveY > h) continue;
         
         ctx.beginPath();
         ctx.moveTo(0, moveY);
-        ctx.lineTo(CANVAS_WIDTH, moveY);
+        ctx.lineTo(w, moveY);
         ctx.stroke();
     }
     
     // Horizon glow
-    const grad = ctx.createLinearGradient(0, horizon, 0, CANVAS_HEIGHT);
+    const grad = ctx.createLinearGradient(0, horizon, 0, h);
     grad.addColorStop(0, color);
     grad.addColorStop(0.2, 'rgba(0,0,0,0)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, horizon, CANVAS_WIDTH, CANVAS_HEIGHT - horizon);
+    ctx.fillRect(0, horizon, w, h - horizon);
 
     ctx.restore();
 };
 
 // Helper for Plasma
-const drawPlasma = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
+const drawPlasma = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number) => {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
     
     const count = 5;
     for(let i=0; i<count; i++) {
         const t = time * speed + i;
-        const x = CANVAS_WIDTH/2 + Math.sin(t) * 400;
-        const y = CANVAS_HEIGHT/2 + Math.cos(t * 1.3) * 300;
-        const r = 300 + Math.sin(t * 0.5) * 100;
+        const x = w/2 + Math.sin(t) * (w * 0.2);
+        const y = h/2 + Math.cos(t * 1.3) * (h * 0.15);
+        const r = (w * 0.15) + Math.sin(t * 0.5) * 100;
         
         const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
         grad.addColorStop(0, color);
         grad.addColorStop(1, 'rgba(0,0,0,0)');
         
         ctx.fillStyle = grad;
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.fillRect(0,0, w, h);
     }
     ctx.restore();
 };
 
 // Helper for Stars
-const drawStars = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
+const drawStars = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number) => {
     ctx.save();
     ctx.fillStyle = color;
     // Deterministic stars based on time offset
     const starCount = 200;
-    const cx = CANVAS_WIDTH / 2;
-    const cy = CANVAS_HEIGHT / 2;
+    const cx = w / 2;
+    const cy = h / 2;
     
     for(let i=0; i<starCount; i++) {
-        let x = (Math.sin(i * 132.1) * CANVAS_WIDTH);
-        let y = (Math.cos(i * 53.7) * CANVAS_HEIGHT);
+        let x = (Math.sin(i * 132.1) * w);
+        let y = (Math.cos(i * 53.7) * h);
         let z = (i * 10 + (time * 500 * speed)) % 2000;
         
         if (z < 1) z = 1;
@@ -155,7 +150,7 @@ const drawStars = (ctx: CanvasRenderingContext2D, time: number, color: string, s
         const sy = cy + y * perspective;
         const size = (1 - z/2000) * 4;
         
-        if (sx > 0 && sx < CANVAS_WIDTH && sy > 0 && sy < CANVAS_HEIGHT) {
+        if (sx > 0 && sx < w && sy > 0 && sy < h) {
              ctx.globalAlpha = 1 - z/2000;
              ctx.beginPath();
              ctx.arc(sx, sy, size, 0, Math.PI * 2);
@@ -166,19 +161,20 @@ const drawStars = (ctx: CanvasRenderingContext2D, time: number, color: string, s
 };
 
 // Helper for Tunnel
-const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
+const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number) => {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
-    const cx = CANVAS_WIDTH / 2;
-    const cy = CANVAS_HEIGHT / 2;
+    const cx = w / 2;
+    const cy = h / 2;
     
     const count = 15;
     const offset = (time * speed) % 1;
-    
+    const maxDim = Math.max(w, h);
+
     for(let i=0; i<count; i++) {
         const progress = (i + offset) / count; // 0 to 1
-        const scale = Math.pow(progress, 3) * Math.max(CANVAS_WIDTH, CANVAS_HEIGHT);
+        const scale = Math.pow(progress, 3) * maxDim;
         
         ctx.globalAlpha = progress;
         ctx.beginPath();
@@ -188,9 +184,9 @@ const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, 
         if (i === count - 1) {
             ctx.beginPath();
             ctx.moveTo(0,0); ctx.lineTo(cx, cy);
-            ctx.moveTo(CANVAS_WIDTH, 0); ctx.lineTo(cx, cy);
-            ctx.moveTo(0, CANVAS_HEIGHT); ctx.lineTo(cx, cy);
-            ctx.moveTo(CANVAS_WIDTH, CANVAS_HEIGHT); ctx.lineTo(cx, cy);
+            ctx.moveTo(w, 0); ctx.lineTo(cx, cy);
+            ctx.moveTo(0, h); ctx.lineTo(cx, cy);
+            ctx.moveTo(w, h); ctx.lineTo(cx, cy);
             ctx.stroke();
         }
     }
@@ -198,29 +194,29 @@ const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, 
 }
 
 // Helper for Optimized Matrix Rain
-const drawMatrix = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
+const drawMatrix = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number) => {
     ctx.save();
     ctx.fillStyle = color;
     
     const fontSize = 35; 
     ctx.font = `${fontSize}px monospace`;
     
-    const columns = Math.ceil(CANVAS_WIDTH / fontSize);
+    const columns = Math.ceil(w / fontSize);
     
     for(let i=0; i<columns; i++) {
         const randomFactor = Math.abs(Math.sin(i * 123.45));
         const colSpeed = (randomFactor * 0.5 + 1.0) * speed * 250; 
-        const offset = Math.cos(i * 67.89) * CANVAS_HEIGHT;
+        const offset = Math.cos(i * 67.89) * h;
         
-        let y = (time * colSpeed + offset) % (CANVAS_HEIGHT + 300);
-        if (y < 0) y += CANVAS_HEIGHT + 300;
+        let y = (time * colSpeed + offset) % (h + 300);
+        if (y < 0) y += h + 300;
         y -= 300; 
         
         const charCount = 8 + Math.floor(randomFactor * 6);
         
         for(let j=0; j<charCount; j++) {
             const charY = y - (j * fontSize);
-            if (charY > -fontSize && charY < CANVAS_HEIGHT + fontSize) {
+            if (charY > -fontSize && charY < h + fontSize) {
                 ctx.globalAlpha = (1 - (j / charCount)) * 0.7;
                 const charCode = 0x30A0 + ((Math.floor(time * i) + j) % 90); 
                 const char = String.fromCharCode(charCode);
@@ -275,10 +271,16 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const wordsByLineCache = useRef<Map<string, Word[][]>>(new Map());
   const particlesRef = useRef<Particle[]>([]);
   const shockwavesRef = useRef<Shockwave[]>([]);
+  const lastTimeRef = useRef<number>(0);
   
   // Media Refs
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Resolution Handling
+  const currentResolution = RESOLUTIONS.find(r => r.id === config.resolutionId) || RESOLUTIONS[0];
+  const CANVAS_WIDTH = currentResolution.width;
+  const CANVAS_HEIGHT = currentResolution.height;
 
   // Load Media when Config Changes
   useEffect(() => {
@@ -322,6 +324,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   useEffect(() => {
     const pCount = config.particles.enabled ? config.particles.count : 0;
     
+    // Resize behavior: Reset particles if resolution changes significantly to avoid out of bounds
+    // Simplified: just re-init if count changes or we could check bounds in draw loop
     if (particlesRef.current.length !== pCount) {
         const newParticles: Particle[] = [];
         for (let i = 0; i < pCount; i++) {
@@ -340,16 +344,22 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         }
         particlesRef.current = newParticles;
     } else {
+        // Just wrap existing ones or update speed/color
         particlesRef.current.forEach(p => {
-             p.vx = (p.vx > 0 ? 1 : -1) * Math.random() * config.particles.speed;
-             p.vy = (p.vy > 0 ? 1 : -1) * Math.random() * config.particles.speed;
+             // Keep vx/vy proportional to speed but retain direction
+             const currentSpeed = Math.sqrt(p.vx*p.vx + p.vy*p.vy) || 0.1;
+             const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5); // Add variance
+             
+             p.vx = (p.vx / currentSpeed) * newSpeed;
+             p.vy = (p.vy / currentSpeed) * newSpeed;
+
              if (!config.particles.color.includes(p.color)) {
                  p.color = config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff';
              }
         });
     }
 
-  }, [config.particles.count, config.particles.speed, config.particles.enabled, config.particles.color]);
+  }, [config.particles.count, config.particles.speed, config.particles.enabled, config.particles.color, CANVAS_WIDTH, CANVAS_HEIGHT]);
 
   const getLines = (segmentId: string, words: Word[]): Word[][] => {
     if (wordsByLineCache.current.has(segmentId)) {
@@ -370,6 +380,12 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
+
+    // Calculate deltaTime
+    const dt = time - lastTimeRef.current;
+    lastTimeRef.current = time;
+    // Cap dt for seek jumps to prevent particles from flying off to infinity
+    const safeDt = Math.abs(dt) > 1.0 ? 0.016 : dt; 
 
     // --- Keyframe Interpolation ---
     // Calculate interpolated config values based on time
@@ -468,6 +484,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         mid *= sensitivity;
         high *= sensitivity;
     }
+    
+    // Boost glow with audio
+    if (audioEnabled) {
+        effectiveGlow = effectiveGlow * (1 + (mid * 0.8) + (bass * 0.2));
+    }
 
     const visibleSegments = data.segments.filter(
       (seg) => time >= seg.start - 2.0 && time <= seg.end + 2.0
@@ -510,17 +531,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const speed = config.background.intensity || 0.5;
         const style = config.background.proceduralStyle || 'grid';
         
-        if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed);
-        if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed);
-        if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed);
-        if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed);
-        if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed);
+        if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT);
+        if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
     
     // Global Overlay
     const cx = CANVAS_WIDTH / 2;
     const cy = CANVAS_HEIGHT / 2;
-    const bgRadius = CANVAS_WIDTH * (0.6 + bass * 0.2);
+    const bgRadius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * (0.6 + bass * 0.2);
     const bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, bgRadius);
     bgGradient.addColorStop(0, 'rgba(0,0,0,0)'); 
     bgGradient.addColorStop(1, 'rgba(0,0,0,0.6)');
@@ -600,7 +621,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (audioEnabled && config.audioReactivity.visualizerStyle === 'orb') {
         ctx.save();
         ctx.translate(cx, cy);
-        const orbRadius = 200 + (bass * 100);
+        const orbRadius = (Math.min(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.2) + (bass * 100);
         
         // Core
         const orbGrad = ctx.createRadialGradient(0,0, 0, 0,0, orbRadius);
@@ -632,22 +653,34 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // Particles
     if (config.particles.enabled) {
         particlesRef.current.forEach(p => {
-            let nx = p.x + (p.vx * time * 60 * 0.5); 
-            let ny = p.y + (p.vy * time * 60 * 0.5);
+            // Calculate Audio Speed Multiplier
+            // Base speed comes from config, boost it with bass
+            const audioSpeedBoost = audioEnabled ? (1 + bass * 3.0) : 1; 
             
-            // Audio Reaction on Particles
+            // Update Position Statefully using Delta Time
+            // We use a factor of 60 to normalize typical frame rate speed to the new dt system
+            p.x += p.vx * safeDt * 60 * audioSpeedBoost;
+            p.y += p.vy * safeDt * 60 * audioSpeedBoost;
+            
+            // Audio Reaction on Particles (Jitter/Displacement)
+            let drawY = p.y;
             if (audioEnabled) {
-                ny -= mid * 50 * Math.sin(time + p.id); 
-                p.angle += 0.02 + (bass * 0.1); // Rotate faster on bass
+                drawY -= mid * 50 * Math.sin(time + p.id); 
+                p.angle += (0.02 + (bass * 0.2)) * audioSpeedBoost; // Rotate faster on bass
             } else {
                 p.angle += 0.02; // Constant rotation
             }
 
-            nx = ((nx % CANVAS_WIDTH) + CANVAS_WIDTH) % CANVAS_WIDTH;
-            ny = ((ny % CANVAS_HEIGHT) + CANVAS_HEIGHT) % CANVAS_HEIGHT;
+            // Wrap Particles
+            p.x = ((p.x % CANVAS_WIDTH) + CANVAS_WIDTH) % CANVAS_WIDTH;
+            p.y = ((p.y % CANVAS_HEIGHT) + CANVAS_HEIGHT) % CANVAS_HEIGHT;
+            
+            // Draw Wrap Logic: if y was modified by audio, calculate draw pos
+            let drawX = p.x;
+            drawY = ((drawY % CANVAS_HEIGHT) + CANVAS_HEIGHT) % CANVAS_HEIGHT;
 
             ctx.save();
-            ctx.translate(nx, ny);
+            ctx.translate(drawX, drawY);
             ctx.rotate(p.angle);
 
             ctx.beginPath();
@@ -678,10 +711,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // Typography
     visibleSegments.forEach(activeSegment => {
       const lines = getLines(activeSegment.id, activeSegment.words);
-      const lineHeight = 140; 
+      const lineHeight = CANVAS_HEIGHT * 0.13; // Dynamic line height relative to canvas
       const totalHeight = lines.length * lineHeight;
       const startY = (CANVAS_HEIGHT - totalHeight) / 2 + lineHeight / 2;
-      const baseFontSize = 100;
+      const baseFontSize = CANVAS_HEIGHT * 0.09; // Dynamic font size
 
       const fontWeight = config.font.weight || '900';
       const fontStyle = config.font.italic ? 'italic' : 'normal';
@@ -695,9 +728,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
          lineWords.forEach((word) => {
              const width = ctx.measureText(word.word).width;
              wordSpacings.push(width);
-             lineWidth += width + 40; 
+             lineWidth += width + (CANVAS_WIDTH * 0.02); // Dynamic spacing
          });
-         lineWidth -= 40; 
+         lineWidth -= (CANVAS_WIDTH * 0.02); 
 
          let currentX = (CANVAS_WIDTH - lineWidth) / 2;
          const currentY = startY + (lineIndex * lineHeight);
@@ -828,7 +861,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              }
              
              ctx.restore();
-             currentX += width + 40;
+             currentX += width + (CANVAS_WIDTH * 0.02);
          });
       });
     });

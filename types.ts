@@ -60,6 +60,7 @@ export interface AnimationKeyframe {
 export interface RendererConfig {
   id: string;
   name: string;
+  resolutionId: string; // '16:9', '9:16', '1:1', '4:5'
   background: {
     type: BackgroundType;
     color: string; // Base color or fallback
@@ -111,4 +112,12 @@ export interface RendererConfig {
     rotate: boolean;
   };
   keyframes: AnimationKeyframe[];
+}
+
+export interface ProjectFile {
+  version: string;
+  timestamp: number;
+  name: string;
+  lyricData: LyricData;
+  config: RendererConfig;
 }

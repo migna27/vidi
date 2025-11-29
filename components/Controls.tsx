@@ -1,209 +1,87 @@
 
-import React, { useRef } from 'react';
-import { Play, Pause, FileJson, Music, SkipBack, SkipForward, Download, FileText, Settings } from 'lucide-react';
+import React from 'react';
+import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 
 interface ControlsProps {
   isPlaying: boolean;
   onTogglePlay: () => void;
-  onJsonUpload: (jsonStr: string) => void;
-  onSrtUpload: (srtStr: string) => void;
-  onAudioUpload: (file: File) => void;
   currentTime: number;
   duration: number;
   onSeek: (time: number) => void;
-  onRender: () => void;
   isRendering: boolean;
-  exportFormat: 'webm' | 'mp4';
-  onExportFormatChange: (format: 'webm' | 'mp4') => void;
-  onOpenSettings: () => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
   isPlaying,
   onTogglePlay,
-  onJsonUpload,
-  onSrtUpload,
-  onAudioUpload,
   currentTime,
   duration,
   onSeek,
-  onRender,
-  isRendering,
-  exportFormat,
-  onExportFormatChange,
-  onOpenSettings
+  isRendering
 }) => {
-  const jsonInputRef = useRef<HTMLInputElement>(null);
-  const srtInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-
-  const handleJsonChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        onJsonUpload(event.target.result as string);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleSrtChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        onSrtUpload(event.target.result as string);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      onAudioUpload(file);
-    }
-  };
-
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const ms = Math.floor((time % 1) * 100);
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
   };
 
   return (
-    <div className="bg-neutral-900/90 backdrop-blur-md border-t border-white/10 p-4 md:p-6 pb-8 md:pb-6 w-full fixed bottom-0 left-0 z-50">
+    <div className="h-20 bg-neutral-900 border-t border-white/5 px-4 flex flex-col justify-center gap-2 select-none">
       
-      {/* Progress Bar */}
-      <div className="w-full mb-4 flex items-center gap-3">
-        <span className="text-xs text-gray-400 w-10 text-right font-mono">{formatTime(currentTime)}</span>
-        <input
-          type="range"
-          min={0}
-          max={duration || 100}
-          value={currentTime}
-          onChange={(e) => onSeek(parseFloat(e.target.value))}
-          disabled={isRendering}
-          className={`w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400 hover:h-2 transition-all ${isRendering ? 'opacity-50 cursor-not-allowed' : ''}`}
-        />
-        <span className="text-xs text-gray-400 w-10 font-mono">{formatTime(duration)}</span>
+      {/* Timeline Scrubber */}
+      <div className="flex items-center gap-4 w-full">
+         <span className="text-xs font-mono text-cyan-500 w-16 text-right">{formatTime(currentTime)}</span>
+         <div className="relative flex-1 h-6 flex items-center group">
+             <div className="absolute w-full h-1 bg-neutral-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-cyan-600 transition-all duration-75 ease-linear"
+                    style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                  />
+             </div>
+             <input
+                type="range"
+                min={0}
+                max={duration || 100}
+                step={0.01}
+                value={currentTime}
+                onChange={(e) => onSeek(parseFloat(e.target.value))}
+                disabled={isRendering}
+                className="absolute w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+             />
+             <div 
+                className="absolute h-3 w-1 bg-white rounded-full shadow pointer-events-none transition-all duration-75 ease-linear"
+                style={{ left: `${(currentTime / (duration || 1)) * 100}%` }}
+             />
+         </div>
+         <span className="text-xs font-mono text-gray-500 w-16">{formatTime(duration)}</span>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        
-        {/* Playback Controls */}
-        <div className="flex items-center gap-6 order-2 md:order-1">
+      {/* Transport Controls */}
+      <div className="flex items-center justify-center gap-4">
            <button 
-            onClick={() => onSeek(currentTime - 5)}
+            onClick={() => onSeek(Math.max(0, currentTime - 5))}
             disabled={isRendering}
-            className="text-gray-400 hover:text-white transition-colors disabled:opacity-30"
+            className="text-gray-500 hover:text-white transition-colors disabled:opacity-30 p-1"
           >
-            <SkipBack size={24} />
+            <SkipBack size={16} />
           </button>
 
           <button
             onClick={onTogglePlay}
             disabled={isRendering}
-            className={`w-14 h-14 flex items-center justify-center rounded-full bg-cyan-500 hover:bg-cyan-400 text-black transition-all transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)] disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed`}
+            className={`w-8 h-8 flex items-center justify-center rounded-full bg-white text-black hover:bg-cyan-400 transition-all disabled:opacity-50`}
           >
-            {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1"/>}
+            {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5"/>}
           </button>
 
           <button 
-            onClick={() => onSeek(currentTime + 5)}
+            onClick={() => onSeek(Math.min(duration, currentTime + 5))}
             disabled={isRendering}
-            className="text-gray-400 hover:text-white transition-colors disabled:opacity-30"
+            className="text-gray-500 hover:text-white transition-colors disabled:opacity-30 p-1"
           >
-            <SkipForward size={24} />
+            <SkipForward size={16} />
           </button>
-        </div>
-
-        {/* File Inputs & Render */}
-        <div className="flex gap-3 order-1 md:order-2 items-center">
-          
-          <button
-            onClick={onOpenSettings}
-            disabled={isRendering}
-            className="p-2 text-gray-300 hover:text-cyan-400 hover:bg-white/5 rounded-md transition-all mr-2"
-            title="Settings"
-          >
-            <Settings size={24} />
-          </button>
-
-          <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 overflow-hidden">
-             <select 
-               value={exportFormat}
-               onChange={(e) => onExportFormatChange(e.target.value as 'webm' | 'mp4')}
-               disabled={isRendering}
-               className="bg-transparent text-xs font-bold text-gray-300 px-3 py-2 outline-none cursor-pointer hover:bg-neutral-700 transition-colors disabled:opacity-50"
-             >
-               <option value="webm">WEBM (VP9)</option>
-               <option value="mp4">MP4 (H.264)</option>
-             </select>
-          </div>
-
-          <button
-            onClick={onRender}
-            disabled={isRendering}
-            className={`flex items-center gap-2 px-4 py-2 text-sm font-bold text-black bg-gradient-to-r from-purple-400 to-cyan-400 hover:from-purple-300 hover:to-cyan-300 rounded-md transition-all shadow-lg ${isRendering ? 'opacity-50 cursor-not-allowed animate-pulse' : ''}`}
-          >
-             <Download size={16} />
-             <span>{isRendering ? 'Rendering...' : 'Render'}</span>
-          </button>
-
-          <div className="h-8 w-[1px] bg-white/10 mx-2 hidden md:block"></div>
-
-          <button
-            onClick={() => jsonInputRef.current?.click()}
-            disabled={isRendering}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
-          >
-            <FileJson size={16} />
-            <span className="hidden sm:inline">JSON</span>
-          </button>
-          <input
-            type="file"
-            ref={jsonInputRef}
-            onChange={handleJsonChange}
-            accept=".json,application/json"
-            className="hidden"
-          />
-
-          <button
-            onClick={() => srtInputRef.current?.click()}
-            disabled={isRendering}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
-          >
-            <FileText size={16} />
-            <span className="hidden sm:inline">SRT</span>
-          </button>
-          <input
-            type="file"
-            ref={srtInputRef}
-            onChange={handleSrtChange}
-            accept=".srt"
-            className="hidden"
-          />
-
-          <button
-            onClick={() => audioInputRef.current?.click()}
-            disabled={isRendering}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-300 bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors border border-white/5 disabled:opacity-50"
-          >
-            <Music size={16} />
-            <span className="hidden sm:inline">Audio</span>
-          </button>
-          <input
-            type="file"
-            ref={audioInputRef}
-            onChange={handleAudioChange}
-            accept="audio/*"
-            className="hidden"
-          />
-        </div>
       </div>
     </div>
   );
