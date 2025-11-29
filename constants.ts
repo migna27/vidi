@@ -1,4 +1,5 @@
 
+
 import { LyricData, RendererConfig } from "./types";
 
 export const FONTS = [
@@ -150,7 +151,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: true,
       rotate: true
-    }
+    },
+    keyframes: []
   },
   {
     id: 'cyber-glitch',
@@ -199,7 +201,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: false,
       rotate: false
-    }
+    },
+    keyframes: []
   },
   {
     id: 'bubble-pop',
@@ -246,7 +249,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: false,
       zoomBeat: true,
       rotate: true
-    }
+    },
+    keyframes: []
   },
   {
     id: 'minimalist',
@@ -293,7 +297,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: false,
       zoomBeat: false,
       rotate: false
-    }
+    },
+    keyframes: []
   },
   {
     id: 'retro-synth',
@@ -342,7 +347,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: true,
       rotate: false
-    }
+    },
+    keyframes: []
   },
   {
     id: 'cinematic-epic',
@@ -391,7 +397,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: false,
       zoomBeat: false,
       rotate: false
-    }
+    },
+    keyframes: []
   },
   {
     id: 'retro-vibe',
@@ -438,7 +445,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: true,
       rotate: true
-    }
+    },
+    keyframes: []
   },
   {
     id: 'pixel-art',
@@ -485,7 +493,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: false,
       rotate: false
-    }
+    },
+    keyframes: []
   },
     {
     id: 'soft-aurora',
@@ -534,7 +543,8 @@ export const TEMPLATES: RendererConfig[] = [
       shake: false,
       zoomBeat: true,
       rotate: true
-    }
+    },
+    keyframes: []
   },
   {
     id: 'kinetic-pop',
@@ -583,6 +593,7 @@ export const TEMPLATES: RendererConfig[] = [
       shake: true,
       zoomBeat: false,
       rotate: false
-    }
+    },
+    keyframes: []
   }
 ];

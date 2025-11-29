@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
@@ -555,6 +556,7 @@ export default function App() {
              config={rendererConfig} 
              onUpdate={setRendererConfig} 
              onClose={() => setShowSettings(false)}
+             currentTime={currentTime}
           />
         )}
       </div>

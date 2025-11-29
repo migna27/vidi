@@ -1,4 +1,5 @@
 
+
 export interface Word {
   word: string;
   start: number;
@@ -40,6 +41,21 @@ export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
 export type ProceduralStyle = 'stars' | 'grid' | 'plasma' | 'tunnel' | 'matrix';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
+
+export interface KeyframeValues {
+  colors_text?: string;
+  colors_active?: string;
+  background_color?: string;
+  effects_glow?: number;
+  camera_zoom?: number; 
+  camera_rotate?: number;
+}
+
+export interface AnimationKeyframe {
+  id: string;
+  time: number;
+  values: KeyframeValues;
+}
 
 export interface RendererConfig {
   id: string;
@@ -94,4 +110,5 @@ export interface RendererConfig {
     zoomBeat: boolean;
     rotate: boolean;
   };
+  keyframes: AnimationKeyframe[];
 }

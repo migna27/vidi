@@ -1,6 +1,7 @@
 
+
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe } from '../types';
 
 interface CanvasVideoRendererProps {
   data: LyricData;
@@ -38,6 +39,36 @@ interface Shockwave {
     alpha: number;
     color: string;
 }
+
+// Math Helpers
+const lerp = (start: number, end: number, t: number) => {
+    return start * (1 - t) + end * t;
+};
+
+// Hex to RGB
+const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : { r: 0, g: 0, b: 0 };
+};
+
+// RGB to Hex
+const rgbToHex = (r: number, g: number, b: number) => {
+    return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1);
+};
+
+// Lerp Color
+const lerpColor = (start: string, end: string, t: number) => {
+    const s = hexToRgb(start);
+    const e = hexToRgb(end);
+    const r = lerp(s.r, e.r, t);
+    const g = lerp(s.g, e.g, t);
+    const b = lerp(s.b, e.b, t);
+    return rgbToHex(r, g, b);
+};
 
 // Helper for Procedural Grid
 const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number) => {
@@ -340,6 +371,88 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
+    // --- Keyframe Interpolation ---
+    // Calculate interpolated config values based on time
+    let effectiveColorsActive = config.colors.active;
+    let effectiveColorsText = config.colors.text;
+    let effectiveBgColor = config.background.color;
+    let effectiveGlow = config.effects.glow;
+    let effectiveZoomOffset = 0;
+    let effectiveRotateOffset = 0;
+
+    const keyframes = config.keyframes || [];
+    if (keyframes.length > 0) {
+        // Find previous and next keyframes
+        let prevKeyframe: AnimationKeyframe | null = null;
+        let nextKeyframe: AnimationKeyframe | null = null;
+
+        for (let i = 0; i < keyframes.length; i++) {
+            if (keyframes[i].time <= time) {
+                prevKeyframe = keyframes[i];
+            } else {
+                nextKeyframe = keyframes[i];
+                break;
+            }
+        }
+
+        if (prevKeyframe && nextKeyframe) {
+            // Interpolate
+            const totalDuration = nextKeyframe.time - prevKeyframe.time;
+            const elapsed = time - prevKeyframe.time;
+            const t = Math.min(1, Math.max(0, elapsed / totalDuration));
+
+            effectiveColorsActive = lerpColor(
+                prevKeyframe.values.colors_active || config.colors.active,
+                nextKeyframe.values.colors_active || config.colors.active,
+                t
+            );
+             effectiveColorsText = lerpColor(
+                prevKeyframe.values.colors_text || config.colors.text,
+                nextKeyframe.values.colors_text || config.colors.text,
+                t
+            );
+             effectiveBgColor = lerpColor(
+                prevKeyframe.values.background_color || config.background.color,
+                nextKeyframe.values.background_color || config.background.color,
+                t
+            );
+             effectiveGlow = lerp(
+                 prevKeyframe.values.effects_glow ?? config.effects.glow,
+                 nextKeyframe.values.effects_glow ?? config.effects.glow,
+                 t
+             );
+             effectiveZoomOffset = lerp(
+                 prevKeyframe.values.camera_zoom || 0,
+                 nextKeyframe.values.camera_zoom || 0,
+                 t
+             );
+             effectiveRotateOffset = lerp(
+                 prevKeyframe.values.camera_rotate || 0,
+                 nextKeyframe.values.camera_rotate || 0,
+                 t
+             );
+
+        } else if (prevKeyframe) {
+            // Hold last keyframe values
+             effectiveColorsActive = prevKeyframe.values.colors_active || config.colors.active;
+             effectiveColorsText = prevKeyframe.values.colors_text || config.colors.text;
+             effectiveBgColor = prevKeyframe.values.background_color || config.background.color;
+             effectiveGlow = prevKeyframe.values.effects_glow ?? config.effects.glow;
+             effectiveZoomOffset = prevKeyframe.values.camera_zoom || 0;
+             effectiveRotateOffset = prevKeyframe.values.camera_rotate || 0;
+        } else if (nextKeyframe) {
+            // Interpolate from Config Defaults to first Keyframe
+             const t = Math.min(1, Math.max(0, time / nextKeyframe.time));
+             effectiveColorsActive = lerpColor(config.colors.active, nextKeyframe.values.colors_active || config.colors.active, t);
+             effectiveColorsText = lerpColor(config.colors.text, nextKeyframe.values.colors_text || config.colors.text, t);
+             effectiveBgColor = lerpColor(config.background.color, nextKeyframe.values.background_color || config.background.color, t);
+             effectiveGlow = lerp(config.effects.glow, nextKeyframe.values.effects_glow ?? config.effects.glow, t);
+             effectiveZoomOffset = lerp(0, nextKeyframe.values.camera_zoom || 0, t);
+             effectiveRotateOffset = lerp(0, nextKeyframe.values.camera_rotate || 0, t);
+        }
+    }
+
+
     // --- Audio Reactivity Handling ---
     let { bass, mid, high, raw } = analysis;
     const audioEnabled = config.audioReactivity.enabled;
@@ -369,7 +482,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
     
     // Fill base color first
-    ctx.fillStyle = config.background.color || '#000';
+    ctx.fillStyle = effectiveBgColor;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     if (config.background.type === 'image' && bgImageRef.current) {
@@ -397,11 +510,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const speed = config.background.intensity || 0.5;
         const style = config.background.proceduralStyle || 'grid';
         
-        if (style === 'grid') drawGrid(ctx, time, config.background.color, speed);
-        if (style === 'plasma') drawPlasma(ctx, time, config.background.color, speed);
-        if (style === 'stars') drawStars(ctx, time, config.background.color, speed);
-        if (style === 'tunnel') drawTunnel(ctx, time, config.background.color, speed);
-        if (style === 'matrix') drawMatrix(ctx, time, config.background.color, speed);
+        if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed);
+        if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed);
+        if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed);
+        if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed);
+        if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed);
     }
     
     // Global Overlay
@@ -423,7 +536,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 y: cy,
                 radius: 50,
                 alpha: 1.0,
-                color: config.colors.active
+                color: effectiveColorsActive
             });
         }
         
@@ -450,17 +563,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // --- 2. Camera Setup ---
     ctx.save();
 
-    let zoom = 1.0;
+    let zoom = 1.0 + effectiveZoomOffset;
     if (config.camera.zoomBeat && audioEnabled) {
         zoom += bass * 0.1;
     }
     const breathZoom = Math.sin(time * 0.5) * 0.02;
     zoom += breathZoom;
 
-    let rot = 0;
+    let rot = effectiveRotateOffset;
     if (config.camera.rotate) {
          if (primaryActiveIndex !== -1) {
-            rot = (primaryActiveIndex % 2 === 0 ? 1 : -1) * 0.02; 
+            rot += (primaryActiveIndex % 2 === 0 ? 1 : -1) * 0.02; 
         }
         rot += Math.sin(time * 0.2) * 0.01; 
     }
@@ -491,7 +604,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         
         // Core
         const orbGrad = ctx.createRadialGradient(0,0, 0, 0,0, orbRadius);
-        orbGrad.addColorStop(0, config.colors.active);
+        orbGrad.addColorStop(0, effectiveColorsActive);
         orbGrad.addColorStop(0.5, 'rgba(0,0,0,0)');
         ctx.fillStyle = orbGrad;
         ctx.globalAlpha = 0.5;
@@ -599,11 +712,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              ctx.translate(currentX + width / 2, currentY);
 
              if (isActive) {
-               ctx.fillStyle = config.colors.active;
+               ctx.fillStyle = effectiveColorsActive;
 
                if (config.animation.active === 'neon') {
-                   const glowIntensity = (30 + (bass * 50)) * config.effects.glow;
-                   ctx.shadowColor = config.colors.active;
+                   const glowIntensity = (30 + (bass * 50)) * effectiveGlow;
+                   ctx.shadowColor = effectiveColorsActive;
                    ctx.shadowBlur = glowIntensity; 
                    ctx.scale(1.05 + bass * 0.1, 1.05 + bass * 0.1);
                } else if (config.animation.active === 'pulse') {
@@ -655,7 +768,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   const progress = 1 - (diff / 0.6); // 0 to 1
                   const eased = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress; 
                   
-                  ctx.fillStyle = config.colors.text;
+                  ctx.fillStyle = effectiveColorsText;
                   ctx.globalAlpha = progress;
 
                   if (config.animation.entrance === 'slam') {
@@ -678,9 +791,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                       if (Math.random() > eased) ctx.translate((Math.random()-0.5)*20, 0);
                   }
                   
-                  if (config.effects.glow > 0) {
+                  if (effectiveGlow > 0) {
                      ctx.shadowColor = config.colors.secondary;
-                     ctx.shadowBlur = 10 * progress * config.effects.glow;
+                     ctx.shadowBlur = 10 * progress * effectiveGlow;
                   }
 
                   ctx.textAlign = 'center';

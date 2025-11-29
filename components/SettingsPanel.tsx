@@ -1,13 +1,15 @@
 
+
 import React, { useState, useRef } from 'react';
-import { X, Check, Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture } from 'lucide-react';
+import { X, Check, Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2 } from 'lucide-react';
 import { TEMPLATES, FONTS } from '../constants';
-import { RendererConfig, AnimationStyle, ActiveStyle, ParticleShape, BackgroundType, ProceduralStyle } from '../types';
+import { RendererConfig, AnimationStyle, ActiveStyle, ParticleShape, BackgroundType, ProceduralStyle, AnimationKeyframe } from '../types';
 
 interface SettingsPanelProps {
   config: RendererConfig;
   onUpdate: (config: RendererConfig) => void;
   onClose: () => void;
+  currentTime: number;
 }
 
 // Helper Components
@@ -54,8 +56,9 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
   </div>
 );
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'templates' | 'customize'>('templates');
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, onClose, currentTime }) => {
+  const [activeTab, setActiveTab] = useState<'templates' | 'customize' | 'timeline'>('templates');
+  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,6 +108,42 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
     }
   };
 
+  // Keyframe Logic
+  const addKeyframe = () => {
+    const newKeyframe: AnimationKeyframe = {
+      id: Date.now().toString(),
+      time: currentTime,
+      values: {
+        colors_active: config.colors.active,
+        colors_text: config.colors.text,
+        background_color: config.background.color,
+        effects_glow: config.effects.glow,
+        camera_zoom: 0,
+        camera_rotate: 0
+      }
+    };
+    const newConfig = { ...config, keyframes: [...(config.keyframes || []), newKeyframe].sort((a, b) => a.time - b.time) };
+    onUpdate(newConfig);
+    setSelectedKeyframeId(newKeyframe.id);
+  };
+
+  const updateKeyframe = (id: string, values: Partial<AnimationKeyframe['values']>) => {
+     const newConfig = { ...config };
+     newConfig.keyframes = newConfig.keyframes.map(kf => 
+       kf.id === id ? { ...kf, values: { ...kf.values, ...values } } : kf
+     );
+     onUpdate(newConfig);
+  };
+
+  const deleteKeyframe = (id: string) => {
+    const newConfig = { ...config };
+    newConfig.keyframes = newConfig.keyframes.filter(kf => kf.id !== id);
+    onUpdate(newConfig);
+    if(selectedKeyframeId === id) setSelectedKeyframeId(null);
+  }
+
+  const selectedKeyframe = config.keyframes?.find(k => k.id === selectedKeyframeId);
+
   return (
     <div className="fixed inset-y-0 right-0 w-full md:w-[400px] bg-neutral-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-[60] text-white flex flex-col transition-transform duration-300">
       {/* Header */}
@@ -131,6 +170,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
           className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'customize' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
         >
           <Sliders size={16} /> Customize
+        </button>
+        <button 
+          onClick={() => setActiveTab('timeline')}
+          className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${activeTab === 'timeline' ? 'text-cyan-400 border-b-2 border-cyan-400 bg-white/5' : 'text-gray-400 hover:text-white'}`}
+        >
+          <Clock size={16} /> Timeline
         </button>
       </div>
 
@@ -431,6 +476,102 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate, 
             </section>
 
           </div>
+        )}
+
+        {/* TIMELINE TAB */}
+        {activeTab === 'timeline' && (
+           <div className="p-4 flex flex-col h-full">
+               <button
+                  onClick={addKeyframe}
+                  className="mb-4 w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-lg font-bold hover:shadow-lg hover:shadow-cyan-500/20 transition-all active:scale-95"
+               >
+                   <Plus size={18} /> Add Keyframe at {new Date(currentTime * 1000).toISOString().substr(14, 5)}
+               </button>
+               
+               <div className="flex-1 overflow-y-auto space-y-2 mb-4">
+                  {(config.keyframes || []).length === 0 ? (
+                      <div className="text-center text-gray-500 text-sm mt-10">
+                          No keyframes added. <br/> Values will remain static.
+                      </div>
+                  ) : (
+                      (config.keyframes || []).map((kf, idx) => (
+                          <div 
+                              key={kf.id}
+                              onClick={() => setSelectedKeyframeId(kf.id)}
+                              className={`p-3 rounded-lg border flex items-center justify-between cursor-pointer transition-colors ${selectedKeyframeId === kf.id ? 'bg-cyan-500/20 border-cyan-500' : 'bg-neutral-800 border-white/5 hover:border-white/20'}`}
+                          >
+                              <div className="flex flex-col">
+                                  <span className="font-mono font-bold text-sm">Keyframe {idx + 1}</span>
+                                  <span className="text-xs text-gray-400">{new Date(kf.time * 1000).toISOString().substr(14, 5)}s</span>
+                              </div>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); deleteKeyframe(kf.id); }}
+                                className="text-gray-500 hover:text-red-500 p-2"
+                              >
+                                  <Trash2 size={16} />
+                              </button>
+                          </div>
+                      ))
+                  )}
+               </div>
+
+               {/* Editor for Selected Keyframe */}
+               {selectedKeyframe && (
+                   <div className="bg-neutral-800 p-4 rounded-xl border border-white/10 space-y-3 animate-in fade-in slide-in-from-bottom-4">
+                        <h4 className="font-bold text-sm text-cyan-400 mb-2">Edit Keyframe</h4>
+                        
+                        <ColorInput 
+                            label="Active Color" 
+                            value={selectedKeyframe.values.colors_active || config.colors.active} 
+                            onChange={(v) => updateKeyframe(selectedKeyframe.id, { colors_active: v })} 
+                        />
+                        <ColorInput 
+                            label="Background Color" 
+                            value={selectedKeyframe.values.background_color || config.background.color} 
+                            onChange={(v) => updateKeyframe(selectedKeyframe.id, { background_color: v })} 
+                        />
+                        
+                        <div>
+                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>Glow</span>
+                                <span>{Math.round((selectedKeyframe.values.effects_glow ?? config.effects.glow) * 100)}%</span>
+                            </div>
+                            <input 
+                                type="range" min="0" max="1" step="0.1" 
+                                value={selectedKeyframe.values.effects_glow ?? config.effects.glow} 
+                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { effects_glow: parseFloat(e.target.value) })}
+                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                            />
+                        </div>
+
+                         <div>
+                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>Camera Zoom (Offset)</span>
+                                <span>{selectedKeyframe.values.camera_zoom?.toFixed(2) || 0}</span>
+                            </div>
+                            <input 
+                                type="range" min="-0.5" max="2.0" step="0.1" 
+                                value={selectedKeyframe.values.camera_zoom || 0} 
+                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { camera_zoom: parseFloat(e.target.value) })}
+                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                            />
+                        </div>
+
+                         <div>
+                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>Camera Rotate (Rad)</span>
+                                <span>{selectedKeyframe.values.camera_rotate?.toFixed(2) || 0}</span>
+                            </div>
+                            <input 
+                                type="range" min="-3.14" max="3.14" step="0.1" 
+                                value={selectedKeyframe.values.camera_rotate || 0} 
+                                onChange={(e) => updateKeyframe(selectedKeyframe.id, { camera_rotate: parseFloat(e.target.value) })}
+                                className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                            />
+                        </div>
+                   </div>
+               )}
+           </div>
         )}
       </div>
     </div>
