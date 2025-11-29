@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, Segment } from '../types';
 
 interface CanvasVideoRendererProps {
   data: LyricData;
@@ -95,11 +95,20 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     const { bass, mid, high, raw } = analysis;
 
-    // --- 0. Pre-Calculation: Active Segment ---
-    const activeSegmentIndex = data.segments.findIndex(
-      (seg) => time >= seg.start - 1.0 && time <= seg.end + 2.0
+    // --- 0. Pre-Calculation: Visible Segments ---
+    // Critical Fix: Filter all segments visible in the time window instead of just finding the first one.
+    // Overlapping segments (fade out/fade in) must both be rendered.
+    const visibleSegments = data.segments.filter(
+      (seg) => time >= seg.start - 2.0 && time <= seg.end + 2.0
     );
-    const activeSegment = activeSegmentIndex !== -1 ? data.segments[activeSegmentIndex] : null;
+
+    // Sort: Render earlier segments first, so later (active) segments draw on top
+    visibleSegments.sort((a, b) => a.start - b.start);
+
+    // Identify primary active segment for camera logic (the one strictly happening now)
+    const primaryActiveIndex = data.segments.findIndex(
+      (seg) => time >= seg.start && time <= seg.end
+    );
 
     // --- 1. Background ---
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
@@ -136,8 +145,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     let rot = 0;
     if (config.camera.rotate) {
-         if (activeSegmentIndex !== -1) {
-            rot = (activeSegmentIndex % 2 === 0 ? 1 : -1) * 0.02; 
+         if (primaryActiveIndex !== -1) {
+            rot = (primaryActiveIndex % 2 === 0 ? 1 : -1) * 0.02; 
         }
         rot += Math.sin(time * 0.2) * 0.01; // drift
     }
@@ -191,8 +200,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         });
     }
 
-    // Typography
-    if (activeSegment) {
+    // Typography - Iterate through ALL visible segments
+    visibleSegments.forEach(activeSegment => {
       const lines = getLines(activeSegment.id, activeSegment.words);
       const lineHeight = 140; // Slightly larger spacing
       const totalHeight = lines.length * lineHeight;
@@ -222,8 +231,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              const isFuture = time < word.start;
              const isActive = !isPast && !isFuture;
              
-             const wordHash = (word.start * 1000 + wIdx) % 3; 
-
              ctx.save();
              ctx.translate(currentX + width / 2, currentY);
 
@@ -298,10 +305,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   } else if (config.animation.entrance === 'zoom') {
                       ctx.scale(eased, eased);
                   } else if (config.animation.entrance === 'typewriter') {
-                      // Simple typewriter: Clip the text width
-                      // We can't easily clip partial characters in standard canvas fillText without offscreen canvas
-                      // Fallback to simple fade for now, or character masking
-                      // Just using fade logic for typewriter "feel" in step form
+                      // Fallback for simple fade + slight scale for typewriter feel
+                      ctx.scale(0.95 + (0.05 * eased), 0.95 + (0.05 * eased));
                   }
                   
                   // Common shadow
@@ -328,7 +333,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                    } else if (config.animation.exit === 'slide') {
                        ctx.translate(0, -50 * progress);
                    } else if (config.animation.exit === 'slam') {
-                        // Slam exit? Maybe fall down
                         ctx.translate(0, progress * 100);
                         ctx.rotate(progress * 0.5);
                    }
@@ -343,7 +347,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              currentX += width + 40;
          });
       });
-    }
+    });
 
     // --- 4. Post-Process (Screen Space) ---
     ctx.restore(); 
@@ -370,9 +374,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // Film Grain
     if (config.effects.filmGrain) {
-        // Draw noise efficiently
-        // Usually we'd use a pattern, but drawing random rects is slow.
-        // Let's do a quick random scatter
         ctx.fillStyle = 'rgba(255,255,255,0.05)';
         for(let i=0; i<400; i++) {
             const x = Math.random() * CANVAS_WIDTH;
