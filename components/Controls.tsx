@@ -1,5 +1,6 @@
+
 import React, { useRef } from 'react';
-import { Play, Pause, FileJson, Music, SkipBack, SkipForward, Download, FileText } from 'lucide-react';
+import { Play, Pause, FileJson, Music, SkipBack, SkipForward, Download, FileText, Settings } from 'lucide-react';
 
 interface ControlsProps {
   isPlaying: boolean;
@@ -14,6 +15,7 @@ interface ControlsProps {
   isRendering: boolean;
   exportFormat: 'webm' | 'mp4';
   onExportFormatChange: (format: 'webm' | 'mp4') => void;
+  onOpenSettings: () => void;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -28,7 +30,8 @@ export const Controls: React.FC<ControlsProps> = ({
   onRender,
   isRendering,
   exportFormat,
-  onExportFormatChange
+  onExportFormatChange,
+  onOpenSettings
 }) => {
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const srtInputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +71,6 @@ export const Controls: React.FC<ControlsProps> = ({
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
-    // const ms = Math.floor((time % 1) * 10);
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
@@ -120,8 +122,17 @@ export const Controls: React.FC<ControlsProps> = ({
         </div>
 
         {/* File Inputs & Render */}
-        <div className="flex gap-3 order-1 md:order-2">
+        <div className="flex gap-3 order-1 md:order-2 items-center">
           
+          <button
+            onClick={onOpenSettings}
+            disabled={isRendering}
+            className="p-2 text-gray-300 hover:text-cyan-400 hover:bg-white/5 rounded-md transition-all mr-2"
+            title="Settings"
+          >
+            <Settings size={24} />
+          </button>
+
           <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 overflow-hidden">
              <select 
                value={exportFormat}

@@ -1,4 +1,5 @@
-import { LyricData } from "./types";
+
+import { LyricData, RendererConfig } from "./types";
 
 export const DEFAULT_LYRICS: LyricData = {
   "createdAt": "2025-11-29T01:23:00.207Z",
@@ -86,54 +87,149 @@ export const DEFAULT_LYRICS: LyricData = {
         { "word": "QUE", "start": 22.259, "end": 22.43, "probability": 0.99, "line_number": 2 },
         { "word": "INTENTO", "start": 22.43, "end": 22.8, "probability": 0.99, "line_number": 2 }
       ]
-    },
-    {
-      "id": "6",
-      "start": 22.8,
-      "end": 23.44,
-      "text": "REVENTAR",
-      "words": [
-        { "word": "REVENTAR", "start": 22.8, "end": 23.44, "probability": 0.99, "line_number": 3 }
-      ]
-    },
-    {
-      "id": "7",
-      "start": 23.44,
-      "end": 25.17,
-      "text": "ES SOLO\nCORTESÍA O\nME ESTÁS",
-      "words": [
-        { "word": "ES", "start": 23.44, "end": 23.82, "probability": 0.79, "line_number": 0 },
-        { "word": "SOLO", "start": 23.82, "end": 24.07, "probability": 0.97, "line_number": 0 },
-        { "word": "CORTESÍA", "start": 24.07, "end": 24.67, "probability": 0.99, "line_number": 1 },
-        { "word": "O", "start": 24.67, "end": 24.81, "probability": 0.99, "line_number": 1 },
-        { "word": "ME", "start": 24.81, "end": 24.97, "probability": 0.99, "line_number": 2 },
-        { "word": "ESTÁS", "start": 24.97, "end": 25.17, "probability": 0.95, "line_number": 2 }
-      ]
-    },
-    {
-      "id": "8",
-      "start": 25.17,
-      "end": 25.92,
-      "text": "QUERIENDO\nHABLAR",
-      "words": [
-        { "word": "QUERIENDO", "start": 25.17, "end": 25.64, "probability": 0.99, "line_number": 3 },
-        { "word": "HABLAR", "start": 25.64, "end": 25.92, "probability": 0.99, "line_number": 4 }
-      ]
-    },
-    {
-      "id": "9",
-      "start": 28.92,
-      "end": 32.87,
-      "text": "MI LADO\nADICTO DICE\nESA ES LA",
-      "words": [
-        { "word": "MI", "start": 28.92, "end": 29.62, "probability": 0.83, "line_number": 0 },
-        { "word": "LADO", "start": 29.62, "end": 29.99, "probability": 0.72, "line_number": 0 },
-        { "word": "ADICTO", "start": 29.99, "end": 30.91, "probability": 0.89, "line_number": 1 },
-        { "word": "DICE", "start": 30.91, "end": 31.95, "probability": 0.87, "line_number": 1 },
-        { "word": "ESA", "start": 31.95, "end": 32.32, "probability": 0.99, "line_number": 2 },
-        { "word": "ES", "start": 32.32, "end": 32.509, "probability": 0.99, "line_number": 2 },
-        { "word": "LA", "start": 32.509, "end": 32.87, "probability": 0.99, "line_number": 2 }
-      ]
     }
   ]
 };
+
+export const TEMPLATES: RendererConfig[] = [
+  {
+    id: 'neon-night',
+    name: 'Neon Night',
+    colors: {
+      background: '#050505',
+      text: '#ffffff',
+      active: '#22d3ee', // Cyan
+      secondary: '#a855f7' // Purple
+    },
+    animation: {
+      entrance: 'slide',
+      active: 'neon',
+      exit: 'fade'
+    },
+    effects: {
+      glow: 0.8,
+      blur: true,
+      chromaticAberration: true,
+      vignette: true,
+      scanlines: false,
+      filmGrain: false
+    },
+    particles: {
+      enabled: true,
+      count: 150,
+      speed: 1.0,
+      shape: 'circle',
+      color: ['#22d3ee', '#a855f7', '#ffffff', '#38bdf8', '#c084fc']
+    },
+    camera: {
+      shake: true,
+      zoomBeat: true,
+      rotate: true
+    }
+  },
+  {
+    id: 'cyber-glitch',
+    name: 'Cyber Glitch',
+    colors: {
+      background: '#000000',
+      text: '#e2e8f0',
+      active: '#00ff00', // Matrix Green
+      secondary: '#ff0000' // Red
+    },
+    animation: {
+      entrance: 'typewriter',
+      active: 'jitter',
+      exit: 'slam'
+    },
+    effects: {
+      glow: 0.4,
+      blur: false,
+      chromaticAberration: true,
+      vignette: true,
+      scanlines: true,
+      filmGrain: true
+    },
+    particles: {
+      enabled: true,
+      count: 80,
+      speed: 3.0,
+      shape: 'square',
+      color: ['#00ff00', '#003300', '#ffffff']
+    },
+    camera: {
+      shake: true,
+      zoomBeat: false,
+      rotate: false
+    }
+  },
+  {
+    id: 'bubble-pop',
+    name: 'Bubble Pop',
+    colors: {
+      background: '#fff7ed', // Orange 50
+      text: '#4c1d95', // Violet 900
+      active: '#db2777', // Pink 600
+      secondary: '#fbbf24' // Amber 400
+    },
+    animation: {
+      entrance: 'slam',
+      active: 'bounce',
+      exit: 'zoom'
+    },
+    effects: {
+      glow: 0.0,
+      blur: false,
+      chromaticAberration: false,
+      vignette: false,
+      scanlines: false,
+      filmGrain: false
+    },
+    particles: {
+      enabled: true,
+      count: 50,
+      speed: 0.5,
+      shape: 'circle',
+      color: ['#db2777', '#fbbf24', '#3b82f6', '#f472b6']
+    },
+    camera: {
+      shake: false,
+      zoomBeat: true,
+      rotate: true
+    }
+  },
+  {
+    id: 'minimalist',
+    name: 'Minimalist',
+    colors: {
+      background: '#ffffff',
+      text: '#171717',
+      active: '#000000',
+      secondary: '#737373'
+    },
+    animation: {
+      entrance: 'fade',
+      active: 'pulse',
+      exit: 'fade'
+    },
+    effects: {
+      glow: 0.0,
+      blur: false,
+      chromaticAberration: false,
+      vignette: false,
+      scanlines: false,
+      filmGrain: true
+    },
+    particles: {
+      enabled: false,
+      count: 0,
+      speed: 0,
+      shape: 'circle',
+      color: []
+    },
+    camera: {
+      shake: false,
+      zoomBeat: false,
+      rotate: false
+    }
+  }
+];

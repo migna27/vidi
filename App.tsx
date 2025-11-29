@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { DEFAULT_LYRICS } from './constants';
+import { DEFAULT_LYRICS, TEMPLATES } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
-import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word } from './types';
+import { SettingsPanel } from './components/SettingsPanel';
+import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig } from './types';
 // @ts-ignore
 import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
 // @ts-ignore
@@ -88,6 +89,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
   
+  // Customization State
+  const [rendererConfig, setRendererConfig] = useState<RendererConfig>(TEMPLATES[0]);
+  const [showSettings, setShowSettings] = useState(false);
+
   // Rendering State
   const [renderStatus, setRenderStatus] = useState<RenderStatus>({ state: 'idle', progress: 0 });
 
@@ -201,14 +206,14 @@ export default function App() {
     }
 
     return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [isPlaying, renderStatus.state, audioUrl, duration, currentTime]);
+  }, [isPlaying, renderStatus.state, audioUrl, duration, currentTime, rendererConfig]); // Added rendererConfig dep
 
   // Effect to handle seeking redraw specifically when paused
   useEffect(() => {
      if (!isPlaying && rendererRef.current && renderStatus.state === 'idle') {
          rendererRef.current.drawFrame(currentTime, { bass: 0, mid: 0, high: 0, raw: new Uint8Array(0) });
      }
-  }, [currentTime, isPlaying, renderStatus.state]);
+  }, [currentTime, isPlaying, renderStatus.state, rendererConfig]); // Added rendererConfig dep
 
 
   const togglePlay = () => {
@@ -497,7 +502,7 @@ export default function App() {
   return (
     <div className="w-full h-screen bg-black overflow-hidden flex flex-col">
       <div className="flex-1 relative">
-        <CanvasVideoRenderer ref={rendererRef} data={data} />
+        <CanvasVideoRenderer ref={rendererRef} data={data} config={rendererConfig} />
         
         {/* Loading/Error Overlay */}
         {(renderStatus.state !== 'idle' || error) && (
@@ -521,6 +526,15 @@ export default function App() {
                 </>
              )}
           </div>
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <SettingsPanel 
+             config={rendererConfig} 
+             onUpdate={setRendererConfig} 
+             onClose={() => setShowSettings(false)}
+          />
         )}
       </div>
 
@@ -549,6 +563,7 @@ export default function App() {
         isRendering={renderStatus.state !== 'idle'}
         exportFormat={exportFormat}
         onExportFormatChange={setExportFormat}
+        onOpenSettings={() => setShowSettings(true)}
       />
     </div>
   );
