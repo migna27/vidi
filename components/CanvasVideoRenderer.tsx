@@ -1,7 +1,7 @@
 
 
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
@@ -670,9 +670,18 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // --- SECTION STYLE OVERRIDES ---
     if (primaryActiveIndex !== -1) {
-        const currentSegment = data.segments[primaryActiveIndex];
-        const sectionType = currentSegment.section || 'verse';
-        const sectionStyle = config.sectionStyles?.[sectionType];
+        // Resolve Effective Section: Walk backwards to find the last defined section
+        let activeSection = 'verse';
+        for (let i = primaryActiveIndex; i >= 0; i--) {
+            if (data.segments[i].section) {
+                activeSection = data.segments[i].section || 'verse';
+                break;
+            }
+        }
+        
+        // Normalize section name (e.g. "Verse 2" -> "verse")
+        const normalizedSection = activeSection.toLowerCase().split(' ')[0] as SectionType;
+        const sectionStyle = config.sectionStyles?.[normalizedSection];
 
         if (sectionStyle && sectionStyle.enabled) {
             if (sectionStyle.colors_active) effectiveColorsActive = sectionStyle.colors_active;

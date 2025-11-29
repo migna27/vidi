@@ -15,7 +15,7 @@ export interface Segment {
   start: number;
   end: number;
   text: string;
-  section: SectionType;
+  section?: string;
   words: Word[];
 }
 

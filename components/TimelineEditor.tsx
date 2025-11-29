@@ -1,8 +1,7 @@
 
-
 import React, { useEffect, useRef, useState } from 'react';
-import { LyricData, Segment, Word, SectionType } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag } from 'lucide-react';
+import { LyricData, Segment, Word } from '../types';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
@@ -121,6 +120,7 @@ const TimeInput = ({
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, currentTime, onSeek }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
     const newSet = new Set(expandedSegments);
@@ -140,7 +140,6 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     let updatedSegment = { ...oldSegment, ...updates };
 
     // If time or explicit flag changed, recalculate the internal word timestamps
-    // NOTE: This resets custom word timings. Users should edit segment bounds first, then fine-tune words.
     if (shouldRecalculateWords || updates.start !== undefined || updates.end !== undefined) {
        updatedSegment.words = recalculateWords(
           updatedSegment.text, 
@@ -180,12 +179,16 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     const lastSeg = newSegments[newSegments.length - 1];
     const newStart = lastSeg ? lastSeg.end + 0.2 : 0;
     
+    // Inherit section from previous if exists
+    // But we don't explicitly set it to keep sparsity unless we want to carry over
+    // For now, let's leave it undefined so it groups with previous visually
+    
     const newSegment: Segment = {
         id: Date.now().toString(),
         start: newStart,
         end: newStart + 2.0,
         text: "New Line",
-        section: 'verse',
+        section: undefined, // undefined means it continues previous section
         words: []
     };
     newSegment.words = recalculateWords(newSegment.text, newSegment.start, newSegment.end);
@@ -208,12 +211,29 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
       URL.revokeObjectURL(url);
   };
 
+  const confirmSectionEdit = (index: number, name: string) => {
+      if (name && name.trim()) {
+          // Normalize to lowercase for styling consistency (verse, chorus, etc.)
+          updateSegmentData(index, { section: name.trim().toLowerCase() });
+      }
+      setEditingSectionId(null);
+  };
+
+  const handleRemoveSection = (index: number) => {
+      // Set section to undefined to merge with previous
+      updateSegmentData(index, { section: undefined });
+  };
+
   // Auto-scroll logic
   useEffect(() => {
     const activeIndex = data.segments.findIndex(s => currentTime >= s.start && currentTime <= s.end);
     
     if (activeIndex !== -1 && scrollRef.current) {
-        const row = scrollRef.current.children[activeIndex] as HTMLElement;
+        // We need to find the specific element, but the children list is dynamic due to section headers.
+        // We'll rely on data-id attributes.
+        const activeSegmentId = data.segments[activeIndex].id;
+        const row = scrollRef.current.querySelector(`[data-segment-id="${activeSegmentId}"]`) as HTMLElement;
+        
         if (row) {
             const container = scrollRef.current;
             const rowTop = row.offsetTop;
@@ -228,13 +248,34 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     }
   }, [currentTime, data.segments]);
 
-  const SECTION_COLORS: Record<SectionType, string> = {
-      verse: 'text-blue-400',
-      chorus: 'text-pink-400',
-      bridge: 'text-yellow-400',
-      intro: 'text-gray-400',
-      outro: 'text-gray-400'
+  const SECTION_COLORS: Record<string, string> = {
+      verse: 'border-blue-500',
+      chorus: 'border-pink-500',
+      bridge: 'border-yellow-500',
+      intro: 'border-gray-500',
+      outro: 'border-red-500'
   };
+
+  const SECTION_BG: Record<string, string> = {
+      verse: 'bg-blue-950/40 text-blue-200',
+      chorus: 'bg-pink-950/40 text-pink-200',
+      bridge: 'bg-yellow-950/40 text-yellow-200',
+      intro: 'bg-gray-800/60 text-gray-300',
+      outro: 'bg-red-950/40 text-red-200'
+  };
+
+  const getSectionColor = (name: string) => {
+     const normalized = name.toLowerCase().split(' ')[0]; // Handle "Verse 2" -> "verse"
+     return SECTION_COLORS[normalized] || 'border-gray-600';
+  };
+
+  const getSectionBg = (name: string) => {
+     const normalized = name.toLowerCase().split(' ')[0];
+     return SECTION_BG[normalized] || 'bg-neutral-800 text-gray-400';
+  };
+
+  // Render logic to handle grouping
+  let currentSection = 'verse'; // Default if nothing defined
 
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
@@ -252,7 +293,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                     className="text-[10px] flex items-center gap-1 bg-neutral-700 hover:bg-neutral-600 px-3 py-1.5 rounded text-gray-200 transition-colors border border-white/5"
                     title="Export edited lyrics to JSON"
                 >
-                    <Download size={12} /> Export JSON
+                    <Download size={12} /> JSON
                 </button>
                 <button 
                     onClick={handleAdd}
@@ -264,7 +305,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
         </div>
 
         {/* LIST AREA */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2" ref={scrollRef}>
             {data.segments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-gray-500 border-2 border-dashed border-white/5 rounded-xl">
                     <AlertCircle className="mb-2 opacity-50" />
@@ -275,156 +316,228 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                 data.segments.map((seg, idx) => {
                     const isActive = currentTime >= seg.start && currentTime <= seg.end;
                     const isExpanded = expandedSegments.has(seg.id);
-                    const sectionColor = SECTION_COLORS[seg.section || 'verse'];
+                    const isEditingSection = editingSectionId === seg.id;
                     
+                    // Determine Section Header
+                    const isNewSection = !!seg.section;
+                    if (isNewSection) currentSection = seg.section!;
+                    else if (idx === 0 && !seg.section) currentSection = 'verse'; // First item default
+
+                    const sectionColor = getSectionColor(currentSection);
+                    const sectionBg = getSectionBg(currentSection);
+
                     return (
-                        <div 
-                            key={seg.id} 
-                            className={`group relative flex flex-col gap-2 p-3 rounded-lg border transition-all duration-200 ${
-                                isActive 
-                                ? 'bg-cyan-950/30 border-cyan-500/50 shadow-[inset_0_0_20px_rgba(34,211,238,0.05)]' 
-                                : 'bg-neutral-800 border-white/5 hover:border-white/10'
-                            }`}
-                        >
-                            {/* ACTIVE INDICATOR STRIP */}
-                            {isActive && (
-                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-500 rounded-l-lg" />
+                        <div key={seg.id} className="flex flex-col gap-1">
+                            
+                            {/* SECTION HEADER BLOCK */}
+                            {isNewSection && (
+                                <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 mb-1 ${sectionBg} border border-white/5 shadow-sm`}>
+                                    <div className="flex items-center gap-2">
+                                        <Tag size={12} className="opacity-70" />
+                                        <span className="text-[10px] font-bold uppercase tracking-widest">{currentSection}</span>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={() => handleRemoveSection(idx)}
+                                        className="p-1 hover:bg-black/20 rounded-full opacity-60 hover:opacity-100 transition-opacity"
+                                        title="Merge with previous section"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                </div>
                             )}
 
-                            {/* ROW 1: CONTROLS & TIMESTAMPS */}
-                            <div className="flex items-center justify-between gap-3">
-                                
-                                <div className="flex items-center gap-2">
-                                     {/* Start / End Inputs */}
-                                    <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
-                                        <div className="flex flex-col px-1">
-                                            <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
-                                            <TimeInput 
-                                                className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                                value={seg.start}
-                                                onChange={(val) => updateSegmentData(idx, { start: val })}
-                                            />
+                            {/* SEGMENT CARD */}
+                            <div 
+                                data-segment-id={seg.id}
+                                className={`group relative flex flex-col gap-2 p-3 rounded-r-lg border-t border-b border-r border-white/5 transition-all duration-200 border-l-4 ${sectionColor} ${
+                                    isActive 
+                                    ? 'bg-cyan-950/30 border-t-cyan-500/30 border-b-cyan-500/30 shadow-[inset_0_0_20px_rgba(34,211,238,0.05)]' 
+                                    : 'bg-neutral-800 hover:border-r-white/20'
+                                }`}
+                            >
+                                {/* ACTIVE INDICATOR STRIP (Overlay) */}
+                                {isActive && (
+                                    <div className="absolute inset-0 border-2 border-cyan-500/20 rounded-r-lg pointer-events-none" />
+                                )}
+
+                                {/* ROW 1: CONTROLS & TIMESTAMPS */}
+                                <div className="flex items-center justify-between gap-3">
+                                    
+                                    <div className="flex items-center gap-2">
+                                        {/* Start / End Inputs */}
+                                        <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
+                                            <div className="flex flex-col px-1">
+                                                <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
+                                                <TimeInput 
+                                                    className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
+                                                    value={seg.start}
+                                                    onChange={(val) => updateSegmentData(idx, { start: val })}
+                                                />
+                                            </div>
+                                            <div className="w-px h-6 bg-white/10"></div>
+                                            <div className="flex flex-col px-1">
+                                                <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
+                                                <TimeInput 
+                                                    className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
+                                                    value={seg.end}
+                                                    onChange={(val) => updateSegmentData(idx, { end: val })}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="w-px h-6 bg-white/10"></div>
-                                        <div className="flex flex-col px-1">
-                                            <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
-                                            <TimeInput 
-                                                className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                                value={seg.end}
-                                                onChange={(val) => updateSegmentData(idx, { end: val })}
-                                            />
-                                        </div>
                                     </div>
 
-                                    {/* SECTION SELECTOR */}
-                                    <div className="relative">
-                                        <Tag size={12} className={`absolute left-2 top-1.5 ${sectionColor} opacity-70`}/>
-                                        <select 
-                                            value={seg.section || 'verse'}
-                                            onChange={(e) => updateSegmentData(idx, { section: e.target.value as SectionType })}
-                                            className="bg-neutral-900 border border-white/5 text-[10px] uppercase font-bold text-gray-400 pl-6 pr-1 py-1 rounded focus:border-cyan-500 outline-none cursor-pointer"
-                                        >
-                                            <option value="intro">Intro</option>
-                                            <option value="verse">Verse</option>
-                                            <option value="chorus">Chorus</option>
-                                            <option value="bridge">Bridge</option>
-                                            <option value="outro">Outro</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                    <button 
-                                        onClick={() => onSeek(seg.start)}
-                                        className={`p-1.5 rounded-md transition-colors ${isActive ? 'bg-cyan-500 text-black' : 'hover:bg-white/10 text-gray-400'}`}
-                                        title="Play segment"
-                                    >
-                                        <PlayCircle size={14} fill={isActive ? "currentColor" : "none"} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDelete(idx)}
-                                        className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
-                                        title="Delete segment"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* ROW 2: TEXT EDITING */}
-                            <div className="relative">
-                                <textarea
-                                    className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${
-                                        isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'
-                                    }`}
-                                    rows={Math.max(2, seg.text.split('\n').length)}
-                                    value={seg.text}
-                                    onChange={(e) => updateSegmentData(idx, { text: e.target.value }, false)} 
-                                    onBlur={() => updateSegmentData(idx, {}, true)} 
-                                    placeholder="Enter lyrics here..."
-                                />
-                                <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 pointer-events-none">
-                                    {(seg.end - seg.start).toFixed(1)}s
-                                </div>
-                            </div>
-
-                            {/* ROW 3: WORD EDITING TOGGLE */}
-                            <div className="flex justify-center mt-1 border-t border-white/5 pt-1">
-                                <button 
-                                    onClick={() => toggleExpand(seg.id)}
-                                    className={`text-[10px] flex items-center gap-1 transition-colors ${isExpanded ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'}`}
-                                >
-                                    {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
-                                    {isExpanded ? "Hide Words" : "Timing"}
-                                </button>
-                            </div>
-
-                            {/* ROW 4: EXPANDED WORD LIST */}
-                            {isExpanded && (
-                                <div className="mt-2 space-y-1 bg-black/20 p-2 rounded border border-white/5">
-                                    <div className="grid grid-cols-12 gap-2 text-[9px] font-bold text-gray-500 uppercase mb-1 px-1">
-                                        <div className="col-span-4">Word</div>
-                                        <div className="col-span-3 text-center">Start</div>
-                                        <div className="col-span-3 text-center">End</div>
-                                        <div className="col-span-2 text-center">Play</div>
-                                    </div>
-                                    {seg.words.map((word, wIdx) => {
-                                         const isWordActive = currentTime >= word.start && currentTime <= word.end;
-                                         return (
-                                            <div key={wIdx} className={`grid grid-cols-12 gap-2 items-center p-1 rounded transition-colors ${isWordActive ? 'bg-cyan-900/30' : 'hover:bg-white/5'}`}>
-                                                <div className="col-span-4 text-xs text-gray-300 truncate font-mono" title={word.word}>
-                                                    {word.word}
-                                                </div>
-                                                <div className="col-span-3">
-                                                    <TimeInput 
-                                                        className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
-                                                        value={word.start}
-                                                        onChange={(v) => updateWordData(idx, wIdx, { start: v })}
+                                    {/* Action Buttons */}
+                                    <div className={`flex items-center gap-1 transition-opacity ${isEditingSection ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
+                                        
+                                        {/* Inline Section Editor or Add Button */}
+                                        {!isNewSection && (
+                                            isEditingSection ? (
+                                                <div className="flex items-center gap-1 bg-black/40 rounded p-0.5 animate-in slide-in-from-right-2 duration-200 border border-cyan-500/50">
+                                                    <input 
+                                                        autoFocus
+                                                        className="w-20 bg-transparent text-[10px] text-white outline-none px-1 font-bold placeholder-gray-500"
+                                                        placeholder="Name..."
+                                                        defaultValue="Chorus"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') confirmSectionEdit(idx, e.currentTarget.value);
+                                                            if (e.key === 'Escape') setEditingSectionId(null);
+                                                            e.stopPropagation();
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
                                                     />
-                                                </div>
-                                                <div className="col-span-3">
-                                                    <TimeInput 
-                                                        className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
-                                                        value={word.end}
-                                                        onChange={(v) => updateWordData(idx, wIdx, { end: v })}
-                                                    />
-                                                </div>
-                                                 <div className="col-span-2 flex justify-center">
-                                                    <button
-                                                        onClick={() => onSeek(word.start)}
-                                                        className="text-gray-500 hover:text-cyan-400 p-0.5"
-                                                        title="Play word"
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                            confirmSectionEdit(idx, input.value);
+                                                        }}
+                                                        className="p-1 hover:bg-green-500/20 text-green-400 rounded"
                                                     >
-                                                        <PlayCircle size={10} />
+                                                        <Check size={12} />
+                                                    </button>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setEditingSectionId(null);
+                                                        }}
+                                                        className="p-1 hover:bg-red-500/20 text-red-400 rounded"
+                                                    >
+                                                        <X size={12} />
                                                     </button>
                                                 </div>
-                                            </div>
-                                         );
-                                    })}
-                                </div>
-                            )}
+                                            ) : (
+                                                <button 
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingSectionId(seg.id);
+                                                    }}
+                                                    className="p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white flex items-center gap-1"
+                                                    title="Start new section here"
+                                                >
+                                                    <FolderInput size={14} />
+                                                </button>
+                                            )
+                                        )}
 
+                                        <button 
+                                            type="button"
+                                            onClick={() => onSeek(seg.start)}
+                                            className={`p-1.5 rounded-md transition-colors ${isActive ? 'bg-cyan-500 text-black' : 'hover:bg-white/10 text-gray-400'}`}
+                                            title="Play segment"
+                                        >
+                                            <PlayCircle size={14} fill={isActive ? "currentColor" : "none"} />
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleDelete(idx)}
+                                            className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
+                                            title="Delete segment"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* ROW 2: TEXT EDITING */}
+                                <div className="relative">
+                                    <textarea
+                                        className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${
+                                            isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'
+                                        }`}
+                                        rows={Math.max(2, seg.text.split('\n').length)}
+                                        value={seg.text}
+                                        onChange={(e) => updateSegmentData(idx, { text: e.target.value }, false)} 
+                                        onBlur={() => updateSegmentData(idx, {}, true)} 
+                                        placeholder="Enter lyrics here..."
+                                    />
+                                    <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 pointer-events-none">
+                                        {(seg.end - seg.start).toFixed(1)}s
+                                    </div>
+                                </div>
+
+                                {/* ROW 3: WORD EDITING TOGGLE */}
+                                <div className="flex justify-center mt-1 border-t border-white/5 pt-1">
+                                    <button 
+                                        type="button"
+                                        onClick={() => toggleExpand(seg.id)}
+                                        className={`text-[10px] flex items-center gap-1 transition-colors ${isExpanded ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'}`}
+                                    >
+                                        {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+                                        {isExpanded ? "Hide Words" : "Timing"}
+                                    </button>
+                                </div>
+
+                                {/* ROW 4: EXPANDED WORD LIST */}
+                                {isExpanded && (
+                                    <div className="mt-2 space-y-1 bg-black/20 p-2 rounded border border-white/5">
+                                        <div className="grid grid-cols-12 gap-2 text-[9px] font-bold text-gray-500 uppercase mb-1 px-1">
+                                            <div className="col-span-4">Word</div>
+                                            <div className="col-span-3 text-center">Start</div>
+                                            <div className="col-span-3 text-center">End</div>
+                                            <div className="col-span-2 text-center">Play</div>
+                                        </div>
+                                        {seg.words.map((word, wIdx) => {
+                                            const isWordActive = currentTime >= word.start && currentTime <= word.end;
+                                            return (
+                                                <div key={wIdx} className={`grid grid-cols-12 gap-2 items-center p-1 rounded transition-colors ${isWordActive ? 'bg-cyan-900/30' : 'hover:bg-white/5'}`}>
+                                                    <div className="col-span-4 text-xs text-gray-300 truncate font-mono" title={word.word}>
+                                                        {word.word}
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <TimeInput 
+                                                            className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
+                                                            value={word.start}
+                                                            onChange={(v) => updateWordData(idx, wIdx, { start: v })}
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-3">
+                                                        <TimeInput 
+                                                            className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
+                                                            value={word.end}
+                                                            onChange={(v) => updateWordData(idx, wIdx, { end: v })}
+                                                        />
+                                                    </div>
+                                                    <div className="col-span-2 flex justify-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => onSeek(word.start)}
+                                                            className="text-gray-500 hover:text-cyan-400 p-0.5"
+                                                            title="Play word"
+                                                        >
+                                                            <PlayCircle size={10} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                            </div>
                         </div>
                     );
                 })
