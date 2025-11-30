@@ -1,4 +1,49 @@
+import 'react';
 
+// Fix for missing JSX.IntrinsicElements types in environment
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      div: any;
+      span: any;
+      h1: any;
+      h2: any;
+      h3: any;
+      h4: any;
+      h5: any;
+      h6: any;
+      p: any;
+      br: any;
+      hr: any;
+      button: any;
+      input: any;
+      label: any;
+      select: any;
+      option: any;
+      textarea: any;
+      header: any;
+      footer: any;
+      section: any;
+      nav: any;
+      canvas: any;
+      img: any;
+      video: any;
+      audio: any;
+      a: any;
+      ul: any;
+      li: any;
+      ol: any;
+      form: any;
+      table: any;
+      thead: any;
+      tbody: any;
+      tr: any;
+      td: any;
+      th: any;
+      [elemName: string]: any;
+    }
+  }
+}
 
 export interface Word {
   word: string;
@@ -92,7 +137,8 @@ export interface RendererConfig {
     color: string; // Base color or fallback
     url?: string; // Blob URL for image or video
     proceduralStyle?: ProceduralStyle;
-    intensity?: number; // Speed or brightness for procedural
+    intensity?: number; // Opacity (Video/Image) or Speed/Brightness (Procedural)
+    playbackSpeed?: number; // Playback rate for Video
   };
   colors: {
     text: string;

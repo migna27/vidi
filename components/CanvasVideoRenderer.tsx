@@ -11,7 +11,7 @@ interface CanvasVideoRendererProps {
 }
 
 export interface CanvasVideoRendererRef {
-  drawFrame: (time: number, analysisData: AudioVisualizerData) => void;
+  drawFrame: (time: number, analysisData: AudioVisualizerData, isAlphaRender?: boolean) => void;
   seekToTime: (time: number) => Promise<void>;
   canvas: HTMLCanvasElement | null;
 }
@@ -506,7 +506,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              vid.crossOrigin = "anonymous";
              vid.src = config.background.url;
              vid.loop = true;
-             vid.muted = true;
+             vid.muted = true; // Essential for autoplay
              vid.playsInline = true;
              // @ts-ignore
              vid.webkitPlaysInline = true;
@@ -523,9 +523,36 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     }
   }, [config.background.type, config.background.url]);
 
-  // Manage Video Playback Logic in Rendering Loop to allow tight sync control
-  // We don't use a separate useEffect for isPlaying because we need frame-perfect checks
-  
+  // Expose imperative handle for Exporting & Precise Seek
+  useImperativeHandle(ref, () => ({
+    canvas: canvasRef.current,
+    drawFrame: (time, analysis, isAlphaRender) => {
+       drawScene(time, analysis, isAlphaRender);
+    },
+    seekToTime: async (time: number) => {
+        if (bgVideoRef.current && config.background.type === 'video') {
+            const vid = bgVideoRef.current;
+            if (vid.readyState >= 2) { // HAVE_CURRENT_DATA or better
+                const playbackSpeed = config.background.playbackSpeed || 1.0;
+                // Calculate correct time in video loop with speed scaling
+                const vidDuration = vid.duration || 1;
+                const scaledTime = time * playbackSpeed;
+                const targetTime = scaledTime % vidDuration;
+
+                return new Promise<void>((resolve) => {
+                    const onSeeked = () => {
+                        vid.removeEventListener('seeked', onSeeked);
+                        resolve();
+                    };
+                    vid.addEventListener('seeked', onSeeked);
+                    vid.currentTime = targetTime;
+                });
+            }
+        }
+        return Promise.resolve();
+    }
+  }));
+
   // Initialize or Update particles based on Config
   useEffect(() => {
     const pCount = config.particles.enabled ? config.particles.count : 0;
@@ -577,10 +604,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     return result;
   };
 
-  const drawScene = (time: number, analysis: AudioVisualizerData) => {
+  const drawScene = (time: number, analysis: AudioVisualizerData, isAlphaRender = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: false });
+    const ctx = canvas.getContext('2d', { alpha: true }); // Ensure alpha is allowed
     if (!ctx) return;
 
     // Calculate deltaTime
@@ -716,92 +743,104 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // --- 1. Background Rendering ---
     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
     
-    ctx.fillStyle = effectiveBgColor;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    if (isAlphaRender) {
+        // In Alpha mode, we clear the canvas completely
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    } else {
+        // Normal Background Rendering
+        ctx.fillStyle = effectiveBgColor;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    if (config.background.type === 'image' && bgImageRef.current) {
-        const img = bgImageRef.current;
-        if (img.complete) {
-            ctx.save();
-            const opacity = config.background.intensity ?? 1.0;
-            ctx.globalAlpha = opacity;
-            const scale = Math.max(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height);
-            const x = (CANVAS_WIDTH / 2) - (img.width / 2) * scale;
-            const y = (CANVAS_HEIGHT / 2) - (img.height / 2) * scale;
-            ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-            ctx.restore();
-        }
-    } 
-    else if (config.background.type === 'video' && bgVideoRef.current) {
-        const vid = bgVideoRef.current;
-        if (vid.readyState >= 2) {
-            const vidDuration = vid.duration || 1;
-            const targetTime = time % vidDuration;
-            
-            // Smoother Sync Logic
-            if (isPlaying) {
-                 if (vid.paused) vid.play().catch(() => {});
-                 
-                 // Check drift
-                 const drift = Math.abs(vid.currentTime - targetTime);
-                 // Wrap-around drift check (video looping point)
-                 const wrapDrift = Math.abs((vid.currentTime - vidDuration) - targetTime);
-
-                 // Only seek if drift is noticeable to prevent stutter
-                 if (drift > 0.3 && wrapDrift > 0.3) {
-                     vid.currentTime = targetTime;
-                 }
-            } else {
-                 // Scrubbing/Exporting: Hard Sync
-                 // NOTE: When exporting, we rely on seekToTime() external call to handle exact frame readiness.
-                 // We still set it here for timeline scrubbing responsiveness (non-export use case)
-                 // But we guard it to avoid micro-jitter if it was just set by seekToTime
-                 if (Math.abs(vid.currentTime - targetTime) > 0.01) {
-                    vid.currentTime = targetTime;
-                 }
-                 if (!vid.paused) vid.pause();
+        if (config.background.type === 'image' && bgImageRef.current) {
+            const img = bgImageRef.current;
+            if (img.complete) {
+                ctx.save();
+                const opacity = config.background.intensity ?? 1.0;
+                ctx.globalAlpha = opacity;
+                const scale = Math.max(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height);
+                const x = (CANVAS_WIDTH / 2) - (img.width / 2) * scale;
+                const y = (CANVAS_HEIGHT / 2) - (img.height / 2) * scale;
+                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+                ctx.restore();
             }
+        } 
+        else if (config.background.type === 'video' && bgVideoRef.current) {
+            const vid = bgVideoRef.current;
+            if (vid.readyState >= 2) {
+                const vidDuration = vid.duration || 1;
+                const playbackSpeed = config.background.playbackSpeed || 1.0;
+                
+                // Calculate where the video should logically be based on song time & speed
+                const scaledTime = time * playbackSpeed;
+                const targetTime = scaledTime % vidDuration;
+                
+                // "Soft Sync" Logic for Playback (Smooth loop, less seeking)
+                if (isPlaying) {
+                     // Ensure playback rate matches config
+                     if (Math.abs(vid.playbackRate - playbackSpeed) > 0.1) {
+                         vid.playbackRate = playbackSpeed;
+                     }
 
-            ctx.save();
-            // Use intensity as opacity/dimming factor for video
-            const opacity = config.background.intensity ?? 1.0;
-            ctx.globalAlpha = opacity;
-            
-            const scale = Math.max(CANVAS_WIDTH / vid.videoWidth, CANVAS_HEIGHT / vid.videoHeight);
-            const x = (CANVAS_WIDTH / 2) - (vid.videoWidth / 2) * scale;
-            const y = (CANVAS_HEIGHT / 2) - (vid.videoHeight / 2) * scale;
-            ctx.drawImage(vid, x, y, vid.videoWidth * scale, vid.videoHeight * scale);
-            ctx.restore();
+                     if (vid.paused) vid.play().catch(() => {});
+                     
+                     // Check drift - Only correct if significantly off to avoid stutter
+                     // We use a larger threshold because the browser's video engine is usually smoother than our frame ticks
+                     const drift = Math.abs(vid.currentTime - targetTime);
+                     const wrapDrift = Math.abs((vid.currentTime - vidDuration) - targetTime);
+
+                     // If drift is > 0.3s, hard seek. Otherwise let it play.
+                     if (drift > 0.3 && wrapDrift > 0.3) {
+                         vid.currentTime = targetTime;
+                     }
+                } else {
+                     // "Hard Sync" for paused scrubbing
+                     if (Math.abs(vid.currentTime - targetTime) > 0.05) {
+                        vid.currentTime = targetTime;
+                     }
+                     if (!vid.paused) vid.pause();
+                }
+
+                ctx.save();
+                const opacity = config.background.intensity ?? 1.0;
+                ctx.globalAlpha = opacity;
+                const scale = Math.max(CANVAS_WIDTH / vid.videoWidth, CANVAS_HEIGHT / vid.videoHeight);
+                const x = (CANVAS_WIDTH / 2) - (vid.videoWidth / 2) * scale;
+                const y = (CANVAS_HEIGHT / 2) - (vid.videoHeight / 2) * scale;
+                ctx.drawImage(vid, x, y, vid.videoWidth * scale, vid.videoHeight * scale);
+                ctx.restore();
+            }
         }
-    }
-    else if (config.background.type === 'procedural') {
-        const speed = config.background.intensity || 0.5;
-        const style = config.background.proceduralStyle || 'grid';
-        const audioData = { bass, mid, high, raw }; // Pack for helpers
+        else if (config.background.type === 'procedural') {
+            const speed = config.background.intensity || 0.5;
+            const style = config.background.proceduralStyle || 'grid';
+            const audioData = { bass, mid, high, raw }; // Pack for helpers
+            
+            if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'gradient-wave') drawGradientWave(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            if (style === 'dna') drawDNA(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+        }
         
-        if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'gradient-wave') drawGradientWave(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-        if (style === 'dna') drawDNA(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+        // Global Overlay
+        const cx = CANVAS_WIDTH / 2;
+        const cy = CANVAS_HEIGHT / 2;
+        const bgRadius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * (0.6 + bass * 0.2);
+        const bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, bgRadius);
+        bgGradient.addColorStop(0, 'rgba(0,0,0,0)'); 
+        bgGradient.addColorStop(1, 'rgba(0,0,0,0.6)');
+        ctx.fillStyle = bgGradient;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
     
-    // Global Overlay
-    const cx = CANVAS_WIDTH / 2;
-    const cy = CANVAS_HEIGHT / 2;
-    const bgRadius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * (0.6 + bass * 0.2);
-    const bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, bgRadius);
-    bgGradient.addColorStop(0, 'rgba(0,0,0,0)'); 
-    bgGradient.addColorStop(1, 'rgba(0,0,0,0.6)');
-    ctx.fillStyle = bgGradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // --- Shockwaves ---
-    if (audioEnabled && config.audioReactivity.visualizerStyle === 'shockwave') {
+    // --- Shockwaves (SKIP IN ALPHA) ---
+    if (!isAlphaRender && audioEnabled && config.audioReactivity.visualizerStyle === 'shockwave') {
+        const cx = CANVAS_WIDTH / 2;
+        const cy = CANVAS_HEIGHT / 2;
         if (bass > 0.7 && Math.random() > 0.8) {
             shockwavesRef.current.push({
                 id: Date.now(),
@@ -872,14 +911,16 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.scale(zoom, zoom);
     ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
     
-    if (config.effects.invert && bass > 0.7 && audioEnabled) {
+    if (!isAlphaRender && config.effects.invert && bass > 0.7 && audioEnabled) {
         ctx.filter = 'invert(1)';
     }
 
     // --- 3. World Elements ---
 
-    // Central Orb
-    if (audioEnabled && config.audioReactivity.visualizerStyle === 'orb') {
+    // Central Orb (SKIP IN ALPHA)
+    if (!isAlphaRender && audioEnabled && config.audioReactivity.visualizerStyle === 'orb') {
+        const cx = CANVAS_WIDTH / 2;
+        const cy = CANVAS_HEIGHT / 2;
         ctx.save();
         ctx.translate(cx, cy);
         const orbRadius = (Math.min(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.2) + (bass * 100);
@@ -909,8 +950,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     }
 
 
-    // Particles
-    if (config.particles.enabled) {
+    // Particles (SKIP IN ALPHA)
+    if (!isAlphaRender && config.particles.enabled) {
         particlesRef.current.forEach(p => {
             const audioSpeedBoost = audioEnabled ? (1 + bass * 3.0) : 1; 
             p.x += p.vx * safeDt * 60 * audioSpeedBoost;
@@ -959,7 +1000,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         });
     }
 
-    // Typography
+    // Typography (ALWAYS RENDER)
     visibleSegments.forEach(activeSegment => {
       const lines = getLines(activeSegment.id, activeSegment.words);
       
@@ -1269,7 +1310,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // --- 4. Post-Process Effects (Screen Space) ---
 
-    // Kaleidoscope Effect
+    // Kaleidoscope Effect (Likely keep for alpha if it just messes with text)
     if (config.effects.kaleidoscope) {
         const tempC = document.createElement('canvas');
         tempC.width = CANVAS_WIDTH;
@@ -1353,8 +1394,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              // Combine - simplified approach to avoid slow pixel manipulation
              // We use 'screen' blend mode on the main context with 3 offset draws
              ctx.globalCompositeOperation = 'source-over';
-             ctx.fillStyle = 'black';
-             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             // In Alpha mode, we can't fill black. 
+             if (!isAlphaRender) {
+                 ctx.fillStyle = 'black';
+                 ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             } else {
+                 ctx.clearRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             }
              
              ctx.globalCompositeOperation = 'screen';
              
@@ -1389,200 +1435,132 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         ctx.globalCompositeOperation = 'source-over';
     }
 
-    if (config.effects.sepia) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'color';
-        ctx.fillStyle = 'rgba(112, 66, 20, 0.6)'; 
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.globalCompositeOperation = 'overlay';
-        ctx.fillStyle = 'rgba(112, 66, 20, 0.3)'; 
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.restore();
-    }
-
-    if (config.effects.grayscale) {
-        ctx.save();
-        ctx.globalCompositeOperation = 'saturation';
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.restore();
-    }
-    
-    // Pixelate / Mosaic (Enhanced to react to bass if needed)
-    if (config.effects.mosaic) {
-        let pixelSize = 4 + (bass * 10); 
-        // If audio not enabled, static size
-        if (!audioEnabled) pixelSize = 8;
-
-        const w = CANVAS_WIDTH;
-        const h = CANVAS_HEIGHT;
-        const tempCanvas = document.createElement('canvas');
-        // Prevent zero-size
-        const safeSize = Math.max(1, pixelSize);
-        tempCanvas.width = Math.ceil(w / safeSize);
-        tempCanvas.height = Math.ceil(h / safeSize);
-        const tempCtx = tempCanvas.getContext('2d');
-        if (tempCtx) {
-            tempCtx.imageSmoothingEnabled = false;
-            tempCtx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
-            ctx.imageSmoothingEnabled = false;
-            ctx.clearRect(0, 0, w, h);
-            ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, w, h);
-            ctx.imageSmoothingEnabled = true;
+    // --- OVERLAY EFFECTS (SKIP ALL IN ALPHA MODE) ---
+    if (!isAlphaRender) {
+        if (config.effects.sepia) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'color';
+            ctx.fillStyle = 'rgba(112, 66, 20, 0.6)'; 
+            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.globalCompositeOperation = 'overlay';
+            ctx.fillStyle = 'rgba(112, 66, 20, 0.3)'; 
+            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.restore();
         }
-    }
 
-    if (config.effects.halftone) {
-        const dotSize = 8;
-        ctx.save();
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = 'rgba(0,0,0,0.5)'; // Dark overlay pattern
+        if (config.effects.grayscale) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'saturation';
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.restore();
+        }
         
-        // Create pattern
-        const pCanvas = document.createElement('canvas');
-        pCanvas.width = dotSize;
-        pCanvas.height = dotSize;
-        const pCtx = pCanvas.getContext('2d');
-        if (pCtx) {
-            pCtx.fillStyle = 'black';
-            pCtx.beginPath();
-            pCtx.arc(dotSize/2, dotSize/2, dotSize/3, 0, Math.PI * 2);
-            pCtx.fill();
-            
-            const pat = ctx.createPattern(pCanvas, 'repeat');
-            if(pat) {
-                ctx.globalCompositeOperation = 'multiply';
-                ctx.fillStyle = pat;
-                ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        // Pixelate / Mosaic (Enhanced to react to bass if needed)
+        if (config.effects.mosaic) {
+            let pixelSize = 4 + (bass * 6);
+            if (pixelSize > 1) {
+                // To do pixelation without creating new canvas constantly, we can turn off smoothing
+                const tempC = document.createElement('canvas');
+                const scale = 1/pixelSize;
+                tempC.width = CANVAS_WIDTH * scale;
+                tempC.height = CANVAS_HEIGHT * scale;
+                const tempCtx = tempC.getContext('2d');
+                if (tempCtx) {
+                    tempCtx.drawImage(canvas, 0, 0, tempC.width, tempC.height);
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.drawImage(tempC, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                    ctx.imageSmoothingEnabled = true;
+                }
             }
         }
-        ctx.restore();
-    }
-
-    if (config.effects.oldMovie) {
-        ctx.save();
-        // Sepia tint
-        ctx.globalCompositeOperation = 'color';
-        ctx.fillStyle = '#704214';
-        ctx.globalAlpha = 0.5;
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        // Flicker
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.2})`;
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        
-        // Scratches
-        if (Math.random() > 0.7) {
-             const x = Math.random() * CANVAS_WIDTH;
-             ctx.beginPath();
-             ctx.moveTo(x, 0);
-             ctx.lineTo(x + (Math.random()-0.5)*5, CANVAS_HEIGHT);
-             ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-             ctx.lineWidth = 1;
-             ctx.stroke();
+        // Halftone
+        if (config.effects.halftone) {
+             ctx.save();
+             ctx.globalCompositeOperation = 'overlay';
+             const dotSize = 4;
+             // We can simulate with a pattern
+             const pCanvas = document.createElement('canvas');
+             pCanvas.width = dotSize;
+             pCanvas.height = dotSize;
+             const pCtx = pCanvas.getContext('2d');
+             if (pCtx) {
+                 pCtx.fillStyle = '#000';
+                 pCtx.beginPath();
+                 pCtx.arc(dotSize/2, dotSize/2, dotSize/3, 0, Math.PI*2);
+                 pCtx.fill();
+                 const pat = ctx.createPattern(pCanvas, 'repeat');
+                 if (pat) {
+                     ctx.fillStyle = pat;
+                     ctx.globalAlpha = 0.3;
+                     ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                 }
+             }
+             ctx.restore();
         }
-        ctx.restore();
-    }
 
-    if (config.effects.mirror) {
-        ctx.save();
-        const w = CANVAS_WIDTH / 2;
-        const h = CANVAS_HEIGHT;
-        ctx.save();
-        ctx.translate(CANVAS_WIDTH, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(canvas, 0, 0, w, h, 0, 0, w, h);
-        ctx.restore();
-        ctx.restore();
-    }
-    
-    if (config.effects.vignette) {
-        const vignette = ctx.createRadialGradient(
-            CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_HEIGHT/2, 
-            CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH/1.1
-        );
-        vignette.addColorStop(0, 'rgba(0,0,0,0)');
-        vignette.addColorStop(1, 'rgba(0,0,0,0.7)');
-        ctx.fillStyle = vignette;
-        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    }
+        // Old Movie (Scratches + Flicker)
+        if (config.effects.oldMovie) {
+             ctx.save();
+             // Flicker
+             const flicker = Math.random() * 0.1;
+             ctx.fillStyle = `rgba(0,0,0,${flicker})`;
+             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             
+             // Scratches
+             if (Math.random() > 0.8) {
+                 const x = Math.random() * CANVAS_WIDTH;
+                 ctx.beginPath();
+                 ctx.moveTo(x, 0);
+                 ctx.lineTo(x + (Math.random()-0.5)*2, CANVAS_HEIGHT);
+                 ctx.strokeStyle = `rgba(255,255,255,${Math.random()*0.5})`;
+                 ctx.lineWidth = 1;
+                 ctx.stroke();
+             }
+             ctx.restore();
+        }
+        
+        if (config.effects.scanlines) {
+            const pat = getScanlinePattern(ctx);
+            if (pat) {
+                ctx.save();
+                ctx.fillStyle = pat;
+                ctx.globalAlpha = 0.3;
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                ctx.restore();
+            }
+        }
 
-    if (config.effects.scanlines) {
-        const pattern = getScanlinePattern(ctx);
-        if (pattern) {
-            ctx.fillStyle = pattern;
+        if (config.effects.vignette) {
+            const gradient = ctx.createRadialGradient(
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.8
+            );
+            gradient.addColorStop(0, 'rgba(0,0,0,0)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+            ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         }
-    }
 
-    if (config.effects.filmGrain) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
-        for(let i=0; i<100; i++) {
-            const x = Math.random() * CANVAS_WIDTH;
-            const y = Math.random() * CANVAS_HEIGHT;
-            ctx.fillRect(x, y, 2, 2);
-        }
-    }
-
-    if (audioEnabled && config.audioReactivity.visualizerStyle === 'spectrum' && raw.length > 0) {
-        const bufferLength = raw.length;
-        const displayCount = Math.min(bufferLength, 64);
-        const barWidth = (CANVAS_WIDTH / displayCount) * 1.2;
-        let xPos = 0;
-        const startX = (CANVAS_WIDTH - (displayCount * (barWidth + 2))) / 2;
-
-        for (let i = 0; i < displayCount; i++) {
-            const value = raw[i];
-            const barHeight = Math.pow(value / 255, 1.8) * (CANVAS_HEIGHT * 0.2);
-
-            if (barHeight > 5) {
-                ctx.fillStyle = `${config.colors.secondary}66`;
-                ctx.fillRect(startX + xPos, CANVAS_HEIGHT - barHeight, barWidth, barHeight);
-            }
-            xPos += barWidth + 2;
+        if (config.effects.filmGrain) {
+            // Simple static noise
+            // Optimization: Generate noise once and offset it? 
+            // For now, random rects are too slow. 
+            // Let's use a composite mode with random color overlay
+            ctx.save();
+            ctx.globalCompositeOperation = 'overlay';
+            // Generating noise per frame is expensive. 
+            // A simple approximation is random alpha white/black
+            // but for performance in this renderer, we might skip full per-pixel noise
+            // or use a pre-rendered noise texture if we had one.
+            // Let's just do a very subtle flicker for now to save FPS
+            ctx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.03)`;
+            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.restore();
         }
     }
   };
-
-  useImperativeHandle(ref, () => ({
-    drawFrame: drawScene,
-    canvas: canvasRef.current,
-    seekToTime: async (time: number) => {
-        if (config.background.type === 'video' && bgVideoRef.current) {
-            const vid = bgVideoRef.current;
-            if (vid.readyState < 2) return;
-
-            const vidDuration = vid.duration || 1;
-            const targetTime = time % vidDuration;
-
-            // Optimización: si el tiempo es muy cercano, no hacer seek para evitar micro-saltos
-            if (Math.abs(vid.currentTime - targetTime) < 0.01) return;
-
-            return new Promise<void>((resolve) => {
-                let resolved = false;
-                const onSeeked = () => {
-                    if (resolved) return;
-                    resolved = true;
-                    vid.removeEventListener('seeked', onSeeked);
-                    resolve();
-                };
-
-                // Safety timeout
-                setTimeout(() => {
-                    if (!resolved) {
-                         resolved = true;
-                         vid.removeEventListener('seeked', onSeeked);
-                         resolve();
-                    }
-                }, 1000);
-
-                vid.addEventListener('seeked', onSeeked);
-                vid.currentTime = targetTime;
-            });
-        }
-    }
-  }));
 
   return (
     <canvas

@@ -6,7 +6,7 @@ import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/Canvas
 import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
 import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer } from './types';
-import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2 } from 'lucide-react';
+import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2, FileVideo } from 'lucide-react';
 
 // @ts-ignore
 import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
@@ -124,6 +124,8 @@ export default function App() {
   
   const [rendererConfig, setRendererConfig] = useState<RendererConfig>(TEMPLATES[0]);
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
+  const [exportMode, setExportMode] = useState<'normal' | 'alpha'>('normal');
+
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Caching / Instant Export State
@@ -493,7 +495,8 @@ export default function App() {
     }
     
     if (rendererRef.current) {
-        rendererRef.current.drawFrame(currentTime, audioVisualizerData);
+        // Playback render mode is always normal (not alpha)
+        rendererRef.current.drawFrame(currentTime, audioVisualizerData, false);
     }
 
     requestRef.current = requestAnimationFrame(loop);
@@ -581,8 +584,8 @@ export default function App() {
       return;
     }
     
-    // Check if we can just use cache
-    if (cachedBlob) {
+    // Check if we can just use cache (ONLY for Normal export)
+    if (cachedBlob && exportMode === 'normal') {
         if (confirm("A cached version from your playback is available! \n\nDo you want to download it instantly (Instant) or render a high-quality version frame-by-frame (Slow)?\n\nClick OK for Instant, Cancel for Slow Render.")) {
             downloadCachedVideo();
             return;
@@ -671,8 +674,11 @@ export default function App() {
       // PHASE 2: VIDEO ENCODING (Batched, Backpressure Managed)
       setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
 
+      // FORCE WEBM FOR ALPHA EXPORT
+      const finalExportFormat = exportMode === 'alpha' ? 'webm' : exportFormat;
+
       let muxer: any;
-      if (exportFormat === 'mp4') {
+      if (finalExportFormat === 'mp4') {
         muxer = new Mp4Muxer({
             target: new Mp4ArrayBufferTarget(),
             video: { codec: 'avc', width: VIDEO_WIDTH, height: VIDEO_HEIGHT },
@@ -680,23 +686,50 @@ export default function App() {
             fastStart: false 
         });
       } else {
+        // WEBM
         muxer = new WebMMuxer({
             target: new WebMArrayBufferTarget(),
-            video: { codec: 'V_VP9', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, frameRate: FPS },
+            video: { 
+                codec: 'V_VP9', 
+                width: VIDEO_WIDTH, 
+                height: VIDEO_HEIGHT, 
+                frameRate: FPS,
+                alpha: exportMode === 'alpha' // ENABLE ALPHA IN MUXER
+            },
             audio: { codec: 'A_OPUS', numberOfChannels: 2, sampleRate: sampleRate }
         });
       }
 
+      // Track encoder errors to stop the loop
+      let encoderError: Error | null = null;
+
       const videoEncoder = new VideoEncoder({
         output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => console.error("VideoEncoder error:", e)
+        error: (e) => {
+            encoderError = e;
+            console.error("VideoEncoder error:", e);
+        }
       });
       
-      const codecConfig: VideoEncoderConfig = exportFormat === 'mp4' 
+      const codecConfig: VideoEncoderConfig = finalExportFormat === 'mp4' 
       ? { codec: 'avc1.4d002a', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, bitrate: 8_000_000 } // Higher bitrate
-      : { codec: 'vp09.00.10.08', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, bitrate: 6_000_000 };
+      : { 
+          codec: 'vp09.00.10.08', 
+          width: VIDEO_WIDTH, 
+          height: VIDEO_HEIGHT, 
+          bitrate: 6_000_000,
+          bitrateMode: exportMode === 'alpha' ? 'variable' : undefined, // Variable can help with alpha in some profiles
+          alpha: exportMode === 'alpha' ? 'keep' : 'discard' // ENABLE ALPHA IN ENCODER
+        };
 
-      videoEncoder.configure(codecConfig);
+      try {
+          videoEncoder.configure(codecConfig);
+      } catch (e) {
+          console.error("Encoder Configuration Failed:", e);
+          alert("Your browser does not support the selected export format (likely Alpha transparency). Please switch to 'Normal' mode.");
+          setRenderStatus({ state: 'idle', progress: 0 });
+          return;
+      }
 
       const canvas = rendererRef.current?.canvas;
       if (!canvas) throw new Error("Canvas not found");
@@ -705,20 +738,28 @@ export default function App() {
       const BATCH_SIZE = 10; // Process frames in small batches to keep UI alive
       
       for (let i = 0; i < totalFrames; i++) {
+         if (encoderError) {
+             throw new Error(`Encoding failed: ${encoderError.message || 'Unknown error'}`);
+         }
+
          const time = i * frameDuration;
          const analysis = analysisFrames[i] || { bass: 0, mid: 0, high: 0, raw: new Uint8Array() };
 
-         // WAIT FOR VIDEO SEEK
-         // Crucial for video backgrounds to prevent black frames/flickering
+         // WAIT FOR VIDEO SEEK (Fixes background video flickering)
          if (rendererRef.current?.seekToTime) {
              await rendererRef.current.seekToTime(time);
          }
 
-         // Draw Frame
-         rendererRef.current?.drawFrame(time, analysis);
+         // Draw Frame with Alpha Support
+         rendererRef.current?.drawFrame(time, analysis, exportMode === 'alpha');
          
          // Create VideoFrame from Canvas
-         const frame = new VideoFrame(canvas, { timestamp: time * 1_000_000 });
+         // If alpha, ensure context was created with alpha: true (it is in CanvasVideoRenderer)
+         const frame = new VideoFrame(canvas, { 
+             timestamp: time * 1_000_000,
+             alpha: exportMode === 'alpha' ? 'keep' : 'discard' 
+         });
+         
          const keyFrame = i % (FPS * 2) === 0; // Keyframe every 2 seconds
          
          // Backpressure: If queue is full, wait for it to drain
@@ -726,7 +767,15 @@ export default function App() {
              await videoEncoder.flush();
          }
 
-         videoEncoder.encode(frame, { keyFrame });
+         try {
+             videoEncoder.encode(frame, { keyFrame });
+         } catch (e) {
+             frame.close();
+             // Check if it's because of a previous error
+             if (encoderError) throw new Error("Encoder closed unexpectedly.");
+             throw e;
+         }
+
          frame.close(); // Important: Release GPU memory immediately
          
          // Update UI & Yield to Event Loop every batch
@@ -743,13 +792,13 @@ export default function App() {
       await videoEncoder.flush();
       videoEncoder.close();
 
-      // Audio Encoding
+      // Audio Encoding (Skip for Alpha? No, usually keep audio)
       const audioEncoder = new AudioEncoder({
         output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
         error: (e) => console.error("AudioEncoder error:", e)
       });
       
-      const audioCodecString = exportFormat === 'mp4' ? 'mp4a.40.2' : 'opus';
+      const audioCodecString = finalExportFormat === 'mp4' ? 'mp4a.40.2' : 'opus';
       audioEncoder.configure({
         codec: audioCodecString,
         numberOfChannels: 2,
@@ -787,11 +836,11 @@ export default function App() {
       // Finalize Muxer
       muxer.finalize();
       const { buffer } = muxer.target;
-      const blob = new Blob([buffer], { type: exportFormat === 'mp4' ? 'video/mp4' : 'video/webm' });
+      const blob = new Blob([buffer], { type: finalExportFormat === 'mp4' ? 'video/mp4' : 'video/webm' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `kinetic-lyric-video.${exportFormat}`;
+      a.download = `kinetic-lyric-video${exportMode === 'alpha' ? '-alpha' : ''}.${finalExportFormat}`;
       a.click();
       
       setRenderStatus({ state: 'done', progress: 100 });
@@ -799,7 +848,12 @@ export default function App() {
 
     } catch (e) {
       console.error("Export failed", e);
-      alert("Rendering failed. Try using a shorter audio clip or simpler settings.");
+      // More friendly error for alpha issue
+      if (exportMode === 'alpha' && (e as any)?.message?.includes('Alpha')) {
+          alert("Export Failed: Your browser doesn't support transparent video encoding. Please switch 'ALPHA' to 'NORMAL' and try again.");
+      } else {
+          alert(`Rendering failed: ${(e as any)?.message || 'Unknown error'}`);
+      }
       setRenderStatus({ state: 'idle', progress: 0 });
     }
   };
@@ -867,7 +921,23 @@ export default function App() {
              </div>
 
              <div className="flex items-center gap-2 bg-neutral-800 p-1 rounded-md border border-white/5">
-                 {!cachedBlob && (
+                 <div className="flex items-center px-1 border-r border-white/5 mr-1">
+                     <button
+                        onClick={() => setExportMode('normal')}
+                        className={`text-[10px] px-2 py-1 font-bold rounded ${exportMode === 'normal' ? 'bg-neutral-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                     >
+                        NORMAL
+                     </button>
+                     <button
+                        onClick={() => setExportMode('alpha')}
+                        className={`text-[10px] px-2 py-1 font-bold rounded flex items-center gap-1 ${exportMode === 'alpha' ? 'bg-neutral-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        title="Transparent Background (WEBM)"
+                     >
+                        ALPHA
+                     </button>
+                 </div>
+
+                 {!cachedBlob && exportMode === 'normal' && (
                     <select 
                         value={exportFormat}
                         onChange={(e) => setExportFormat(e.target.value as any)}
@@ -881,13 +951,13 @@ export default function App() {
                  <button
                     onClick={startRendering}
                     disabled={renderStatus.state !== 'idle' || audioLayers.length === 0}
-                    className={`${cachedBlob ? 'bg-green-600 hover:bg-green-500' : 'bg-cyan-600 hover:bg-cyan-500'} disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all`}
-                    title={cachedBlob ? "Instant Download available" : "High quality render"}
+                    className={`${cachedBlob && exportMode === 'normal' ? 'bg-green-600 hover:bg-green-500' : 'bg-cyan-600 hover:bg-cyan-500'} disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all`}
+                    title={cachedBlob && exportMode === 'normal' ? "Instant Download available" : "High quality render"}
                  >
                     {renderStatus.state === 'idle' ? (
                         <>
-                            {cachedBlob ? <Zap size={14} fill="currentColor"/> : <Video size={14} />} 
-                            {cachedBlob ? 'INSTANT EXPORT' : 'EXPORT'}
+                            {cachedBlob && exportMode === 'normal' ? <Zap size={14} fill="currentColor"/> : <Video size={14} />} 
+                            {cachedBlob && exportMode === 'normal' ? 'INSTANT EXPORT' : 'EXPORT'}
                         </>
                     ) : (
                         <>
@@ -923,7 +993,7 @@ export default function App() {
           </div>
 
           <div className="flex-1 bg-neutral-950 relative flex flex-col min-w-0">
-               <div className="flex-1 flex items-center justify-center p-8 overflow-hidden bg-[radial-gradient(circle_at_center,_#1a1a1a_1px,_transparent_1px)] bg-[length:20px_20px]">
+               <div className={`flex-1 flex items-center justify-center p-8 overflow-hidden ${exportMode === 'alpha' ? 'bg-[conic-gradient(#333_90deg,transparent_90deg)] bg-[length:20px_20px] bg-neutral-800' : 'bg-[radial-gradient(circle_at_center,_#1a1a1a_1px,_transparent_1px)] bg-[length:20px_20px]'}`}>
                    <div 
                       className="relative shadow-2xl border border-white/10"
                       style={{

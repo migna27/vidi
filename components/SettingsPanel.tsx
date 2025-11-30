@@ -765,6 +765,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                     className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
                                 />
                              </div>
+                             
+                             {config.background.type === 'video' && (
+                                 <div className="pt-2">
+                                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                        <span>Playback Speed</span>
+                                        <span>{config.background.playbackSpeed || 1.0}x</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0.1" max="4.0" step="0.1" 
+                                        value={config.background.playbackSpeed || 1.0} 
+                                        onChange={(e) => updateNested('background', 'playbackSpeed', parseFloat(e.target.value))}
+                                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                    />
+                                </div>
+                             )}
                         </>
                     )}
                 </div>
