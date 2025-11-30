@@ -1,7 +1,5 @@
-
-
 import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
@@ -631,6 +629,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     let effectiveGlow = config.effects.glow;
     let effectiveZoomOffset = 0;
     let effectiveRotateOffset = 0;
+    let effectiveImageEffect: ImageEffect = config.background.imageEffect || 'none';
 
     const keyframes = config.keyframes || [];
     if (keyframes.length > 0) {
@@ -681,6 +680,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                  nextKeyframe.values.camera_rotate || 0,
                  t
              );
+             // Discrete steps for Image Effect (take current)
+             effectiveImageEffect = prevKeyframe.values.image_effect || config.background.imageEffect || 'none';
 
         } else if (prevKeyframe) {
              effectiveColorsActive = prevKeyframe.values.colors_active || config.colors.active;
@@ -689,6 +690,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              effectiveGlow = prevKeyframe.values.effects_glow ?? config.effects.glow;
              effectiveZoomOffset = prevKeyframe.values.camera_zoom || 0;
              effectiveRotateOffset = prevKeyframe.values.camera_rotate || 0;
+             effectiveImageEffect = prevKeyframe.values.image_effect || config.background.imageEffect || 'none';
         } else if (nextKeyframe) {
              const t = Math.min(1, Math.max(0, time / nextKeyframe.time));
              effectiveColorsActive = lerpColor(config.colors.active, nextKeyframe.values.colors_active || config.colors.active, t);
@@ -697,6 +699,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              effectiveGlow = lerp(config.effects.glow, nextKeyframe.values.effects_glow ?? config.effects.glow, t);
              effectiveZoomOffset = lerp(0, nextKeyframe.values.camera_zoom || 0, t);
              effectiveRotateOffset = lerp(0, nextKeyframe.values.camera_rotate || 0, t);
+             effectiveImageEffect = config.background.imageEffect || 'none';
         }
     }
 
@@ -751,17 +754,116 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         ctx.fillStyle = effectiveBgColor;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+        const drawMedia = (media: HTMLImageElement | HTMLVideoElement, isVideo: boolean) => {
+             const width = isVideo ? (media as HTMLVideoElement).videoWidth : (media as HTMLImageElement).width;
+             const height = isVideo ? (media as HTMLVideoElement).videoHeight : (media as HTMLImageElement).height;
+             const opacity = config.background.intensity ?? 1.0;
+
+             ctx.save();
+             ctx.globalAlpha = opacity;
+             
+             // --- IMAGE EFFECTS LOGIC ---
+             let scale = Math.max(CANVAS_WIDTH / width, CANVAS_HEIGHT / height);
+             let x = (CANVAS_WIDTH / 2) - (width / 2) * scale;
+             let y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
+
+             // Dark/Red Error Flash Logic
+             const isErrorEffect = effectiveImageEffect === 'dark-error' || effectiveImageEffect === 'red-error';
+             const flashThreshold = 0.6; // Beat threshold
+             const isFlashing = isErrorEffect && audioEnabled && bass > flashThreshold && Math.random() > 0.7;
+
+             // Reactive Zoom for Effects
+             if (effectiveImageEffect === 'zoom-slow') {
+                 scale *= 1.0 + (Math.sin(time * 0.2) * 0.1); // Slow breathing
+             } else if (isErrorEffect && audioEnabled) {
+                 scale *= 1.0 + (bass * 0.15); // Punchy zoom
+             }
+
+             // Recalculate center based on new scale
+             x = (CANVAS_WIDTH / 2) - (width / 2) * scale;
+             y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
+
+             // Apply Filters before drawing
+             if (isFlashing) {
+                 // Negative / High Contrast flash
+                 ctx.filter = 'invert(1) contrast(1.5)';
+             } else if (isErrorEffect) {
+                 // Subtle tinting via filter or later overlay
+                 // Slight blur on bass for "shock"
+                 if(bass > 0.5) ctx.filter = `blur(${bass * 2}px)`;
+             }
+
+             // Draw Base Media
+             ctx.drawImage(media, x, y, width * scale, height * scale);
+             
+             // --- POST-DRAW EFFECT OVERLAYS ---
+             if (effectiveImageEffect === 'dark-error') {
+                 // Blue/Violet Overlay
+                 ctx.globalCompositeOperation = 'multiply'; // or overlay
+                 ctx.fillStyle = 'rgba(20, 0, 60, 0.5)'; // Deep Violet
+                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                 
+                 // Add Glitch Slices
+                 if (audioEnabled && high > 0.3) {
+                     ctx.globalCompositeOperation = 'source-over';
+                     const numSlices = Math.floor(high * 10);
+                     for(let i=0; i<numSlices; i++) {
+                         const sliceH = Math.random() * 50;
+                         const sliceY = Math.random() * CANVAS_HEIGHT;
+                         const offsetX = (Math.random() - 0.5) * 50 * high;
+                         
+                         // Draw a slice of the image offset
+                         ctx.save();
+                         ctx.beginPath();
+                         ctx.rect(0, sliceY, CANVAS_WIDTH, sliceH);
+                         ctx.clip();
+                         ctx.translate(offsetX, 0);
+                         ctx.drawImage(media, x, y, width * scale, height * scale);
+                         ctx.restore();
+                         
+                         // Occasional color band
+                         if (Math.random() > 0.7) {
+                             ctx.fillStyle = 'rgba(0, 255, 255, 0.2)'; // Cyan
+                             ctx.fillRect(0, sliceY, CANVAS_WIDTH, sliceH);
+                         }
+                     }
+                 }
+
+             } else if (effectiveImageEffect === 'red-error') {
+                 // Red Overlay
+                 ctx.globalCompositeOperation = 'multiply';
+                 ctx.fillStyle = 'rgba(60, 0, 0, 0.6)'; // Deep Red
+                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                 
+                  // Glitch Slices
+                 if (audioEnabled && high > 0.3) {
+                     ctx.globalCompositeOperation = 'source-over';
+                     const numSlices = Math.floor(high * 10);
+                     for(let i=0; i<numSlices; i++) {
+                         const sliceH = Math.random() * 50;
+                         const sliceY = Math.random() * CANVAS_HEIGHT;
+                         const offsetX = (Math.random() - 0.5) * 60 * high; // More aggressive
+                         
+                         ctx.save();
+                         ctx.beginPath();
+                         ctx.rect(0, sliceY, CANVAS_WIDTH, sliceH);
+                         ctx.clip();
+                         ctx.translate(offsetX, 0);
+                         // Tint the slice red
+                         ctx.filter = 'sepia(1) saturate(5) hue-rotate(-50deg)';
+                         ctx.drawImage(media, x, y, width * scale, height * scale);
+                         ctx.restore();
+                     }
+                 }
+             }
+             
+             ctx.restore();
+        };
+
         if (config.background.type === 'image' && bgImageRef.current) {
             const img = bgImageRef.current;
             if (img.complete) {
-                ctx.save();
-                const opacity = config.background.intensity ?? 1.0;
-                ctx.globalAlpha = opacity;
-                const scale = Math.max(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height);
-                const x = (CANVAS_WIDTH / 2) - (img.width / 2) * scale;
-                const y = (CANVAS_HEIGHT / 2) - (img.height / 2) * scale;
-                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-                ctx.restore();
+                drawMedia(img, false);
             }
         } 
         else if (config.background.type === 'video' && bgVideoRef.current) {
@@ -799,15 +901,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                      }
                      if (!vid.paused) vid.pause();
                 }
-
-                ctx.save();
-                const opacity = config.background.intensity ?? 1.0;
-                ctx.globalAlpha = opacity;
-                const scale = Math.max(CANVAS_WIDTH / vid.videoWidth, CANVAS_HEIGHT / vid.videoHeight);
-                const x = (CANVAS_WIDTH / 2) - (vid.videoWidth / 2) * scale;
-                const y = (CANVAS_HEIGHT / 2) - (vid.videoHeight / 2) * scale;
-                ctx.drawImage(vid, x, y, vid.videoWidth * scale, vid.videoHeight * scale);
-                ctx.restore();
+                
+                drawMedia(vid, true);
             }
         }
         else if (config.background.type === 'procedural') {
@@ -1288,9 +1383,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                    } else if (exitAnim === 'sink') {
                        ctx.translate(0, progress * 100);
                    } else if (exitAnim === 'burn') {
-                       ctx.translate(0, -progress * 50);
-                       ctx.filter = `blur(${progress * 8}px)`;
-                       ctx.fillStyle = '#111'; // Charred
+                       ctx.translate(0, -progress * 20);
+                       ctx.scale(1, 1 + progress * 2);
+                       ctx.filter = `blur(${progress * 5}px) brightness(${1 + progress * 2})`;
+                       ctx.fillStyle = '#ff4400'; 
                    }
                    
                    ctx.textAlign = 'center';
@@ -1300,275 +1396,23 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              }
              
              ctx.restore();
-             currentX += width + finalWordGap;
+             
+             currentX += width;
+             if (wIdx < lineWords.length - 1) currentX += finalWordGap;
          });
       });
     });
 
-    ctx.filter = 'none'; 
-    ctx.restore(); 
-
-    // --- 4. Post-Process Effects (Screen Space) ---
-
-    // Kaleidoscope Effect (Likely keep for alpha if it just messes with text)
-    if (config.effects.kaleidoscope) {
-        const tempC = document.createElement('canvas');
-        tempC.width = CANVAS_WIDTH;
-        tempC.height = CANVAS_HEIGHT;
-        const tempCtx = tempC.getContext('2d');
-        if (tempCtx) {
-            tempCtx.drawImage(canvas, 0, 0);
-            
-            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.save();
-            ctx.translate(CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
-            const slices = 8;
-            const step = (Math.PI * 2) / slices;
-            
-            for(let i=0; i<slices; i++) {
-                ctx.save();
-                ctx.rotate(i * step + (time * 0.2));
-                ctx.beginPath();
-                ctx.moveTo(0,0);
-                ctx.arc(0,0, Math.max(CANVAS_WIDTH, CANVAS_HEIGHT), -step/2 - 0.01, step/2 + 0.01);
-                ctx.closePath();
-                ctx.clip();
-                
-                // Draw image rotated back so it acts as a mirror
-                // Every other slice is mirrored
-                if (i % 2 === 0) {
-                     ctx.scale(-1, 1);
-                     ctx.rotate(time * 0.1); // Add swirl
-                } else {
-                     ctx.rotate(-time * 0.1);
-                }
-                
-                ctx.drawImage(tempC, -CANVAS_WIDTH/2, -CANVAS_HEIGHT/2);
-                ctx.restore();
-            }
-            ctx.restore();
-        }
-    }
-
-    if (config.effects.rgbSplit) {
-        const offset = 10;
-        const tempC = document.createElement('canvas');
-        tempC.width = CANVAS_WIDTH;
-        tempC.height = CANVAS_HEIGHT;
-        const tempCtx = tempC.getContext('2d');
-        if (tempCtx) {
-             tempCtx.drawImage(canvas, 0, 0);
-             ctx.globalCompositeOperation = 'screen';
-             ctx.save();
-             
-             // Red Channel
-             ctx.fillStyle = 'red'; // Multiply not easily done without pixel manipulation, assume add
-             // Better: draw original with offsets and composite
-             ctx.clearRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             
-             // Draw Red
-             ctx.globalCompositeOperation = 'source-over';
-             ctx.drawImage(tempC, -offset, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = '#ff0000';
-             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             
-             const redLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-             // Draw Blue
-             ctx.globalCompositeOperation = 'source-over';
-             ctx.drawImage(tempC, offset, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = '#0000ff';
-             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             const blueLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-             // Draw Green (Center)
-             ctx.globalCompositeOperation = 'source-over';
-             ctx.drawImage(tempC, 0, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = '#00ff00';
-             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             const greenLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             
-             // Combine - simplified approach to avoid slow pixel manipulation
-             // We use 'screen' blend mode on the main context with 3 offset draws
-             ctx.globalCompositeOperation = 'source-over';
-             // In Alpha mode, we can't fill black. 
-             if (!isAlphaRender) {
-                 ctx.fillStyle = 'black';
-                 ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             } else {
-                 ctx.clearRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             }
-             
-             ctx.globalCompositeOperation = 'screen';
-             
-             // Red
-             ctx.save();
-             ctx.translate(-offset, 0);
-             ctx.drawImage(tempC, 0, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = 'red';
-             ctx.fillRect(0, 0, CANVAS_WIDTH + offset, CANVAS_HEIGHT);
-             ctx.restore();
-
-             // Blue
-             ctx.save();
-             ctx.translate(offset, 0);
-             ctx.drawImage(tempC, 0, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = 'blue';
-             ctx.fillRect(-offset, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             ctx.restore();
-
-             // Green
-             ctx.save();
-             ctx.drawImage(tempC, 0, 0);
-             ctx.globalCompositeOperation = 'multiply';
-             ctx.fillStyle = 'lime';
-             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             ctx.restore();
-             
-             ctx.restore();
-        }
-        ctx.globalCompositeOperation = 'source-over';
-    }
-
-    // --- OVERLAY EFFECTS (SKIP ALL IN ALPHA MODE) ---
-    if (!isAlphaRender) {
-        if (config.effects.sepia) {
-            ctx.save();
-            ctx.globalCompositeOperation = 'color';
-            ctx.fillStyle = 'rgba(112, 66, 20, 0.6)'; 
-            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.globalCompositeOperation = 'overlay';
-            ctx.fillStyle = 'rgba(112, 66, 20, 0.3)'; 
-            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.restore();
-        }
-
-        if (config.effects.grayscale) {
-            ctx.save();
-            ctx.globalCompositeOperation = 'saturation';
-            ctx.fillStyle = '#000000';
-            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.restore();
-        }
-        
-        // Pixelate / Mosaic (Enhanced to react to bass if needed)
-        if (config.effects.mosaic) {
-            let pixelSize = 4 + (bass * 6);
-            if (pixelSize > 1) {
-                // To do pixelation without creating new canvas constantly, we can turn off smoothing
-                const tempC = document.createElement('canvas');
-                const scale = 1/pixelSize;
-                tempC.width = CANVAS_WIDTH * scale;
-                tempC.height = CANVAS_HEIGHT * scale;
-                const tempCtx = tempC.getContext('2d');
-                if (tempCtx) {
-                    tempCtx.drawImage(canvas, 0, 0, tempC.width, tempC.height);
-                    ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(tempC, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                    ctx.imageSmoothingEnabled = true;
-                }
-            }
-        }
-        
-        // Halftone
-        if (config.effects.halftone) {
-             ctx.save();
-             ctx.globalCompositeOperation = 'overlay';
-             const dotSize = 4;
-             // We can simulate with a pattern
-             const pCanvas = document.createElement('canvas');
-             pCanvas.width = dotSize;
-             pCanvas.height = dotSize;
-             const pCtx = pCanvas.getContext('2d');
-             if (pCtx) {
-                 pCtx.fillStyle = '#000';
-                 pCtx.beginPath();
-                 pCtx.arc(dotSize/2, dotSize/2, dotSize/3, 0, Math.PI*2);
-                 pCtx.fill();
-                 const pat = ctx.createPattern(pCanvas, 'repeat');
-                 if (pat) {
-                     ctx.fillStyle = pat;
-                     ctx.globalAlpha = 0.3;
-                     ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 }
-             }
-             ctx.restore();
-        }
-
-        // Old Movie (Scratches + Flicker)
-        if (config.effects.oldMovie) {
-             ctx.save();
-             // Flicker
-             const flicker = Math.random() * 0.1;
-             ctx.fillStyle = `rgba(0,0,0,${flicker})`;
-             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-             
-             // Scratches
-             if (Math.random() > 0.8) {
-                 const x = Math.random() * CANVAS_WIDTH;
-                 ctx.beginPath();
-                 ctx.moveTo(x, 0);
-                 ctx.lineTo(x + (Math.random()-0.5)*2, CANVAS_HEIGHT);
-                 ctx.strokeStyle = `rgba(255,255,255,${Math.random()*0.5})`;
-                 ctx.lineWidth = 1;
-                 ctx.stroke();
-             }
-             ctx.restore();
-        }
-        
-        if (config.effects.scanlines) {
-            const pat = getScanlinePattern(ctx);
-            if (pat) {
-                ctx.save();
-                ctx.fillStyle = pat;
-                ctx.globalAlpha = 0.3;
-                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                ctx.restore();
-            }
-        }
-
-        if (config.effects.vignette) {
-            const gradient = ctx.createRadialGradient(
-            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
-            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.8
-            );
-            gradient.addColorStop(0, 'rgba(0,0,0,0)');
-            gradient.addColorStop(1, 'rgba(0,0,0,0.8)');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        }
-
-        if (config.effects.filmGrain) {
-            // Simple static noise
-            // Optimization: Generate noise once and offset it? 
-            // For now, random rects are too slow. 
-            // Let's use a composite mode with random color overlay
-            ctx.save();
-            ctx.globalCompositeOperation = 'overlay';
-            // Generating noise per frame is expensive. 
-            // A simple approximation is random alpha white/black
-            // but for performance in this renderer, we might skip full per-pixel noise
-            // or use a pre-rendered noise texture if we had one.
-            // Let's just do a very subtle flicker for now to save FPS
-            ctx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.03)`;
-            ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ctx.restore();
-        }
-    }
+    ctx.restore();
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      width={CANVAS_WIDTH}
-      height={CANVAS_HEIGHT}
-      className="w-full h-full object-contain"
-    />
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        className="w-full h-full object-contain"
+      />
   );
 });
 

@@ -89,6 +89,7 @@ export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
 export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
+export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow';
 
 export interface KeyframeValues {
   colors_text?: string;
@@ -97,6 +98,7 @@ export interface KeyframeValues {
   effects_glow?: number;
   camera_zoom?: number; 
   camera_rotate?: number;
+  image_effect?: ImageEffect;
 }
 
 export interface SectionStyle {
@@ -137,6 +139,7 @@ export interface RendererConfig {
     color: string; // Base color or fallback
     url?: string; // Blob URL for image or video
     proceduralStyle?: ProceduralStyle;
+    imageEffect?: ImageEffect; // New field for static config
     intensity?: number; // Opacity (Video/Image) or Speed/Brightness (Procedural)
     playbackSpeed?: number; // Playback rate for Video
   };

@@ -1,9 +1,7 @@
-
-
 import React, { useState, useRef } from 'react';
 import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect } from '../types';
 import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
@@ -118,6 +116,14 @@ const KeyframeEditor: React.FC<KeyframeEditorProps> = ({ keyframe, defaults, onU
                     onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, background_color: v } })} 
                 />
                 
+                {/* Image Effect Override in Keyframe */}
+                <SelectInput 
+                    label="BG Image Effect" 
+                    value={keyframe.values.image_effect || defaults.background.imageEffect || 'none'} 
+                    options={['none', 'dark-error', 'red-error', 'zoom-slow']} 
+                    onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, image_effect: v } })} 
+                />
+
                 <div>
                     <div className="flex justify-between text-xs text-gray-400 mb-1">
                         <span>Glow Intensity</span>
@@ -281,7 +287,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         background_color: config.background.color,
         effects_glow: config.effects.glow,
         camera_zoom: 0,
-        camera_rotate: 0
+        camera_rotate: 0,
+        image_effect: config.background.imageEffect || 'none'
       }
     };
     const newConfig = { ...config, keyframes: [...(config.keyframes || []), newKeyframe].sort((a, b) => a.time - b.time) };
@@ -739,7 +746,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
                     {(config.background.type === 'procedural' || config.background.type === 'image' || config.background.type === 'video') && (
                         <>
-                             {config.background.type === 'procedural' && (
+                             {config.background.type === 'procedural' ? (
                                 <>
                                     <ColorInput label="Base Color" value={config.background.color} onChange={(v) => updateNested('background', 'color', v)} />
                                     <SelectInput 
@@ -749,6 +756,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         onChange={(v) => updateNested('background', 'proceduralStyle', v)} 
                                     />
                                 </>
+                             ) : (
+                                <SelectInput 
+                                    label="Image Effect" 
+                                    value={config.background.imageEffect || 'none'} 
+                                    options={['none', 'dark-error', 'red-error', 'zoom-slow']} 
+                                    onChange={(v) => updateNested('background', 'imageEffect', v)} 
+                                />
                              )}
                              
                              <div className="pt-2">
