@@ -12,6 +12,7 @@ interface CanvasVideoRendererProps {
 
 export interface CanvasVideoRendererRef {
   drawFrame: (time: number, analysisData: AudioVisualizerData) => void;
+  seekToTime: (time: number) => Promise<void>;
   canvas: HTMLCanvasElement | null;
 }
 
@@ -485,42 +486,46 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
   // Load Media when Config Changes
   useEffect(() => {
+    // IMAGE
     if (config.background.type === 'image' && config.background.url) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = config.background.url;
-        bgImageRef.current = img;
+        // Reuse object if URL is same? React effect logic handles dependency check
+        if (bgImageRef.current?.src !== config.background.url) {
+             const img = new Image();
+             img.crossOrigin = "anonymous";
+             img.src = config.background.url;
+             bgImageRef.current = img;
+        }
     } else {
         bgImageRef.current = null;
     }
 
+    // VIDEO
     if (config.background.type === 'video' && config.background.url) {
-        const vid = document.createElement('video');
-        vid.crossOrigin = "anonymous";
-        vid.src = config.background.url;
-        vid.loop = true;
-        vid.muted = true;
-        vid.load();
-        bgVideoRef.current = vid;
+         if (bgVideoRef.current?.src !== config.background.url) {
+             const vid = document.createElement('video');
+             vid.crossOrigin = "anonymous";
+             vid.src = config.background.url;
+             vid.loop = true;
+             vid.muted = true;
+             vid.playsInline = true;
+             // @ts-ignore
+             vid.webkitPlaysInline = true;
+             vid.preload = "auto";
+             vid.load();
+             bgVideoRef.current = vid;
+         }
     } else {
         if(bgVideoRef.current) {
             bgVideoRef.current.pause();
+            bgVideoRef.current.src = ""; // Clean up
             bgVideoRef.current = null;
         }
     }
   }, [config.background.type, config.background.url]);
 
-  // Manage Video Playback
-  useEffect(() => {
-    if (bgVideoRef.current) {
-        if (isPlaying) {
-             bgVideoRef.current.play().catch(() => {});
-        } else {
-             bgVideoRef.current.pause();
-        }
-    }
-  }, [isPlaying]);
-
+  // Manage Video Playback Logic in Rendering Loop to allow tight sync control
+  // We don't use a separate useEffect for isPlaying because we need frame-perfect checks
+  
   // Initialize or Update particles based on Config
   useEffect(() => {
     const pCount = config.particles.enabled ? config.particles.count : 0;
@@ -717,22 +722,56 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (config.background.type === 'image' && bgImageRef.current) {
         const img = bgImageRef.current;
         if (img.complete) {
+            ctx.save();
+            const opacity = config.background.intensity ?? 1.0;
+            ctx.globalAlpha = opacity;
             const scale = Math.max(CANVAS_WIDTH / img.width, CANVAS_HEIGHT / img.height);
             const x = (CANVAS_WIDTH / 2) - (img.width / 2) * scale;
             const y = (CANVAS_HEIGHT / 2) - (img.height / 2) * scale;
             ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            ctx.restore();
         }
     } 
     else if (config.background.type === 'video' && bgVideoRef.current) {
         const vid = bgVideoRef.current;
         if (vid.readyState >= 2) {
-            if (Math.abs(vid.currentTime - (time % vid.duration)) > 0.05) {
-                 vid.currentTime = time % vid.duration;
+            const vidDuration = vid.duration || 1;
+            const targetTime = time % vidDuration;
+            
+            // Smoother Sync Logic
+            if (isPlaying) {
+                 if (vid.paused) vid.play().catch(() => {});
+                 
+                 // Check drift
+                 const drift = Math.abs(vid.currentTime - targetTime);
+                 // Wrap-around drift check (video looping point)
+                 const wrapDrift = Math.abs((vid.currentTime - vidDuration) - targetTime);
+
+                 // Only seek if drift is noticeable to prevent stutter
+                 if (drift > 0.3 && wrapDrift > 0.3) {
+                     vid.currentTime = targetTime;
+                 }
+            } else {
+                 // Scrubbing/Exporting: Hard Sync
+                 // NOTE: When exporting, we rely on seekToTime() external call to handle exact frame readiness.
+                 // We still set it here for timeline scrubbing responsiveness (non-export use case)
+                 // But we guard it to avoid micro-jitter if it was just set by seekToTime
+                 if (Math.abs(vid.currentTime - targetTime) > 0.01) {
+                    vid.currentTime = targetTime;
+                 }
+                 if (!vid.paused) vid.pause();
             }
+
+            ctx.save();
+            // Use intensity as opacity/dimming factor for video
+            const opacity = config.background.intensity ?? 1.0;
+            ctx.globalAlpha = opacity;
+            
             const scale = Math.max(CANVAS_WIDTH / vid.videoWidth, CANVAS_HEIGHT / vid.videoHeight);
             const x = (CANVAS_WIDTH / 2) - (vid.videoWidth / 2) * scale;
             const y = (CANVAS_HEIGHT / 2) - (vid.videoHeight / 2) * scale;
             ctx.drawImage(vid, x, y, vid.videoWidth * scale, vid.videoHeight * scale);
+            ctx.restore();
         }
     }
     else if (config.background.type === 'procedural') {
@@ -819,6 +858,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         shakeX += Math.sin(time * 0.5) * 20;
         shakeY += Math.cos(time * 0.3) * 20;
         rot += Math.sin(time * 0.2) * 0.02; 
+    }
+
+    if (config.camera.panic && bass > 0.5 && audioEnabled) {
+        zoom += (Math.random() * 0.3);
+        rot += (Math.random() - 0.5) * 0.1;
+        shakeX += (Math.random() - 0.5) * 50;
+        shakeY += (Math.random() - 0.5) * 50;
     }
 
     ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
@@ -961,6 +1007,21 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       // We can use the scale factor but measuring is robust
       const finalWordGap = fontSize * 0.3;
 
+      // --- RESOLVE SECTION ANIMATION OVERRIDES FOR THIS SEGMENT ---
+      let currentSegEntrance = config.animation.entrance;
+      let currentSegActive = config.animation.active;
+      let currentSegExit = config.animation.exit;
+
+      if (activeSegment.section) {
+           const normalizedSection = activeSegment.section.toLowerCase().split(' ')[0] as SectionType;
+           const style = config.sectionStyles?.[normalizedSection];
+           if (style && style.enabled && style.animation) {
+               if (style.animation.entrance) currentSegEntrance = style.animation.entrance;
+               if (style.animation.active) currentSegActive = style.animation.active;
+               if (style.animation.exit) currentSegExit = style.animation.exit;
+           }
+      }
+
       lines.forEach((lineWords, lineIndex) => {
          // Measure current line width
          let currentLineWidth = 0;
@@ -991,8 +1052,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
              if (isActive) {
                ctx.fillStyle = effectiveColorsActive;
-               const activeAnim = config.animation.active;
+               const activeAnim = currentSegActive;
 
+               // --- ACTIVE ANIMATIONS ---
                if (activeAnim === 'neon') {
                    const glowIntensity = (30 + (bass * 50)) * effectiveGlow;
                    ctx.shadowColor = effectiveColorsActive;
@@ -1025,6 +1087,30 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                        ctx.shadowBlur = 40;
                        ctx.shadowColor = '#ffffff';
                    }
+               } else if (activeAnim === 'float') {
+                   const floatY = Math.sin(time * 2) * 15;
+                   const floatRot = Math.sin(time * 1.5) * 0.05;
+                   ctx.translate(0, floatY);
+                   ctx.rotate(floatRot);
+               } else if (activeAnim === 'shiver') {
+                   const amount = 2 + (bass * 10);
+                   ctx.translate((Math.random()-0.5)*amount, (Math.random()-0.5)*amount);
+               } else if (activeAnim === 'rainbow') {
+                   const hue = (time * 100) % 360;
+                   ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                   ctx.scale(1.05, 1.05);
+               } else if (activeAnim === 'heartbeat') {
+                   // Double pulse
+                   const beat = (time * 2) % 1.5; 
+                   let scale = 1;
+                   if (beat < 0.2) scale = 1.1 + (bass * 0.2);
+                   else if (beat > 0.3 && beat < 0.5) scale = 1.05 + (bass * 0.1);
+                   ctx.scale(scale, scale);
+               } else if (activeAnim === 'swing') {
+                   // Pivot at top center (approx)
+                   ctx.translate(0, -fontSize/2);
+                   ctx.rotate(Math.sin(time * 3) * 0.2);
+                   ctx.translate(0, fontSize/2);
                }
 
                ctx.textAlign = 'center';
@@ -1059,8 +1145,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   ctx.fillStyle = effectiveColorsText;
                   ctx.globalAlpha = progress;
 
-                  const entranceAnim = config.animation.entrance;
+                  const entranceAnim = currentSegEntrance;
 
+                  // --- ENTRANCE ANIMATIONS ---
                   if (entranceAnim === 'slam') {
                       const scale = 3 - (2 * eased); 
                       ctx.scale(scale, scale);
@@ -1083,12 +1170,24 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                       const scale = easeOutElastic(progress);
                       ctx.scale(scale, scale);
                   } else if (entranceAnim === 'drop') {
+                      // Fall from top
                       const yOffset = -500 * (1 - easeOutElastic(progress));
                       ctx.translate(0, yOffset);
                   } else if (entranceAnim === 'spiral') {
                       const angle = (1 - progress) * Math.PI * 4;
                       ctx.rotate(angle);
                       ctx.scale(progress, progress);
+                  } else if (entranceAnim === 'inflate') {
+                      // 0 -> 1.2 -> 1
+                      let scale = 0;
+                      if (progress < 0.7) scale = (progress / 0.7) * 1.2;
+                      else scale = 1.2 - ((progress - 0.7) / 0.3) * 0.2;
+                      ctx.scale(scale, scale);
+                  } else if (entranceAnim === 'stretch') {
+                      // Wide to Normal
+                      const scaleX = 3 - (2 * eased);
+                      const scaleY = eased;
+                      ctx.scale(scaleX, scaleY);
                   }
 
                   if (effectiveGlow > 0) {
@@ -1100,11 +1199,19 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   ctx.textBaseline = 'middle';
 
                   let textToDraw = word.word;
-                  if (entranceAnim === 'scramble' && progress < 1) {
-                      if (Math.random() > progress) {
-                          textToDraw = textToDraw.split('').map(() => getRandomChar()).join('');
-                          ctx.fillStyle = '#00ff00'; 
+                  if (entranceAnim === 'scramble' && progress < 1.0) {
+                      // Scramble letters until finish
+                      const charsToScramble = Math.floor((1 - progress) * word.word.length);
+                      if (charsToScramble > 0) {
+                        textToDraw = word.word.split('').map((char, idx) => {
+                             // Keep first few chars correct as progress increases
+                             if (idx >= word.word.length - charsToScramble) return getRandomChar();
+                             return char;
+                        }).join('');
                       }
+                      ctx.fillStyle = '#00ff00'; // Matrix vibe override usually, but use palette?
+                      // Let's stick to palette but maybe flash?
+                      if (Math.random() > 0.8) ctx.fillStyle = '#ffffff';
                   }
 
                   ctx.fillText(textToDraw, 0, 0);
@@ -1116,8 +1223,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                    ctx.globalAlpha = 1 - progress;
                    ctx.fillStyle = config.colors.secondary;
                    
-                   const exitAnim = config.animation.exit;
+                   const exitAnim = currentSegExit;
 
+                   // --- EXIT ANIMATIONS ---
                    if (exitAnim === 'zoom') {
                        const s = 1 - (progress * 0.5);
                        ctx.scale(s, s);
@@ -1136,6 +1244,12 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                    } else if (exitAnim === 'spiral') {
                        ctx.rotate(progress * Math.PI * 2);
                        ctx.scale(1 - progress, 1 - progress);
+                   } else if (exitAnim === 'sink') {
+                       ctx.translate(0, progress * 100);
+                   } else if (exitAnim === 'burn') {
+                       ctx.translate(0, -progress * 50);
+                       ctx.filter = `blur(${progress * 8}px)`;
+                       ctx.fillStyle = '#111'; // Charred
                    }
                    
                    ctx.textAlign = 'center';
@@ -1155,6 +1269,126 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // --- 4. Post-Process Effects (Screen Space) ---
 
+    // Kaleidoscope Effect
+    if (config.effects.kaleidoscope) {
+        const tempC = document.createElement('canvas');
+        tempC.width = CANVAS_WIDTH;
+        tempC.height = CANVAS_HEIGHT;
+        const tempCtx = tempC.getContext('2d');
+        if (tempCtx) {
+            tempCtx.drawImage(canvas, 0, 0);
+            
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            ctx.save();
+            ctx.translate(CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
+            const slices = 8;
+            const step = (Math.PI * 2) / slices;
+            
+            for(let i=0; i<slices; i++) {
+                ctx.save();
+                ctx.rotate(i * step + (time * 0.2));
+                ctx.beginPath();
+                ctx.moveTo(0,0);
+                ctx.arc(0,0, Math.max(CANVAS_WIDTH, CANVAS_HEIGHT), -step/2 - 0.01, step/2 + 0.01);
+                ctx.closePath();
+                ctx.clip();
+                
+                // Draw image rotated back so it acts as a mirror
+                // Every other slice is mirrored
+                if (i % 2 === 0) {
+                     ctx.scale(-1, 1);
+                     ctx.rotate(time * 0.1); // Add swirl
+                } else {
+                     ctx.rotate(-time * 0.1);
+                }
+                
+                ctx.drawImage(tempC, -CANVAS_WIDTH/2, -CANVAS_HEIGHT/2);
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+    }
+
+    if (config.effects.rgbSplit) {
+        const offset = 10;
+        const tempC = document.createElement('canvas');
+        tempC.width = CANVAS_WIDTH;
+        tempC.height = CANVAS_HEIGHT;
+        const tempCtx = tempC.getContext('2d');
+        if (tempCtx) {
+             tempCtx.drawImage(canvas, 0, 0);
+             ctx.globalCompositeOperation = 'screen';
+             ctx.save();
+             
+             // Red Channel
+             ctx.fillStyle = 'red'; // Multiply not easily done without pixel manipulation, assume add
+             // Better: draw original with offsets and composite
+             ctx.clearRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             
+             // Draw Red
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.drawImage(tempC, -offset, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = '#ff0000';
+             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             
+             const redLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+             // Draw Blue
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.drawImage(tempC, offset, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = '#0000ff';
+             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             const blueLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+             // Draw Green (Center)
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.drawImage(tempC, 0, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = '#00ff00';
+             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             const greenLayer = ctx.getImageData(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             
+             // Combine - simplified approach to avoid slow pixel manipulation
+             // We use 'screen' blend mode on the main context with 3 offset draws
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.fillStyle = 'black';
+             ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             
+             ctx.globalCompositeOperation = 'screen';
+             
+             // Red
+             ctx.save();
+             ctx.translate(-offset, 0);
+             ctx.drawImage(tempC, 0, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = 'red';
+             ctx.fillRect(0, 0, CANVAS_WIDTH + offset, CANVAS_HEIGHT);
+             ctx.restore();
+
+             // Blue
+             ctx.save();
+             ctx.translate(offset, 0);
+             ctx.drawImage(tempC, 0, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = 'blue';
+             ctx.fillRect(-offset, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             ctx.restore();
+
+             // Green
+             ctx.save();
+             ctx.drawImage(tempC, 0, 0);
+             ctx.globalCompositeOperation = 'multiply';
+             ctx.fillStyle = 'lime';
+             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+             ctx.restore();
+             
+             ctx.restore();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
     if (config.effects.sepia) {
         ctx.save();
         ctx.globalCompositeOperation = 'color';
@@ -1173,14 +1407,20 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
         ctx.restore();
     }
-
+    
+    // Pixelate / Mosaic (Enhanced to react to bass if needed)
     if (config.effects.mosaic) {
-        const pixelSize = 4 + (bass * 20); 
+        let pixelSize = 4 + (bass * 10); 
+        // If audio not enabled, static size
+        if (!audioEnabled) pixelSize = 8;
+
         const w = CANVAS_WIDTH;
         const h = CANVAS_HEIGHT;
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = w / pixelSize;
-        tempCanvas.height = h / pixelSize;
+        // Prevent zero-size
+        const safeSize = Math.max(1, pixelSize);
+        tempCanvas.width = Math.ceil(w / safeSize);
+        tempCanvas.height = Math.ceil(h / safeSize);
         const tempCtx = tempCanvas.getContext('2d');
         if (tempCtx) {
             tempCtx.imageSmoothingEnabled = false;
@@ -1190,6 +1430,59 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, w, h);
             ctx.imageSmoothingEnabled = true;
         }
+    }
+
+    if (config.effects.halftone) {
+        const dotSize = 8;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; // Dark overlay pattern
+        
+        // Create pattern
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = dotSize;
+        pCanvas.height = dotSize;
+        const pCtx = pCanvas.getContext('2d');
+        if (pCtx) {
+            pCtx.fillStyle = 'black';
+            pCtx.beginPath();
+            pCtx.arc(dotSize/2, dotSize/2, dotSize/3, 0, Math.PI * 2);
+            pCtx.fill();
+            
+            const pat = ctx.createPattern(pCanvas, 'repeat');
+            if(pat) {
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.fillStyle = pat;
+                ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            }
+        }
+        ctx.restore();
+    }
+
+    if (config.effects.oldMovie) {
+        ctx.save();
+        // Sepia tint
+        ctx.globalCompositeOperation = 'color';
+        ctx.fillStyle = '#704214';
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        
+        // Flicker
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.2})`;
+        ctx.fillRect(0,0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        
+        // Scratches
+        if (Math.random() > 0.7) {
+             const x = Math.random() * CANVAS_WIDTH;
+             ctx.beginPath();
+             ctx.moveTo(x, 0);
+             ctx.lineTo(x + (Math.random()-0.5)*5, CANVAS_HEIGHT);
+             ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+             ctx.lineWidth = 1;
+             ctx.stroke();
+        }
+        ctx.restore();
     }
 
     if (config.effects.mirror) {
@@ -1254,7 +1547,41 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
   useImperativeHandle(ref, () => ({
     drawFrame: drawScene,
-    canvas: canvasRef.current
+    canvas: canvasRef.current,
+    seekToTime: async (time: number) => {
+        if (config.background.type === 'video' && bgVideoRef.current) {
+            const vid = bgVideoRef.current;
+            if (vid.readyState < 2) return;
+
+            const vidDuration = vid.duration || 1;
+            const targetTime = time % vidDuration;
+
+            // Optimización: si el tiempo es muy cercano, no hacer seek para evitar micro-saltos
+            if (Math.abs(vid.currentTime - targetTime) < 0.01) return;
+
+            return new Promise<void>((resolve) => {
+                let resolved = false;
+                const onSeeked = () => {
+                    if (resolved) return;
+                    resolved = true;
+                    vid.removeEventListener('seeked', onSeeked);
+                    resolve();
+                };
+
+                // Safety timeout
+                setTimeout(() => {
+                    if (!resolved) {
+                         resolved = true;
+                         vid.removeEventListener('seeked', onSeeked);
+                         resolve();
+                    }
+                }, 1000);
+
+                vid.addEventListener('seeked', onSeeked);
+                vid.currentTime = targetTime;
+            });
+        }
+    }
   }));
 
   return (

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
@@ -706,6 +707,12 @@ export default function App() {
       for (let i = 0; i < totalFrames; i++) {
          const time = i * frameDuration;
          const analysis = analysisFrames[i] || { bass: 0, mid: 0, high: 0, raw: new Uint8Array() };
+
+         // WAIT FOR VIDEO SEEK
+         // Crucial for video backgrounds to prevent black frames/flickering
+         if (rendererRef.current?.seekToTime) {
+             await rendererRef.current.seekToTime(time);
+         }
 
          // Draw Frame
          rendererRef.current?.drawFrame(time, analysis);

@@ -37,8 +37,8 @@ export interface RenderStatus {
   totalFrames?: number;
 }
 
-export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral';
-export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash';
+export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch';
+export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing';
 export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
@@ -60,6 +60,11 @@ export interface SectionStyle {
   colors_active?: string;
   effects_glow_boost?: number; // Multiplier or add value
   camera_zoom_boost?: number;
+  animation?: {
+    entrance?: AnimationStyle;
+    active?: ActiveStyle;
+    exit?: AnimationStyle;
+  };
 }
 
 export interface AnimationKeyframe {
@@ -122,6 +127,10 @@ export interface RendererConfig {
     mosaic: boolean; // Pixelate effect
     sepia: boolean;
     grayscale: boolean;
+    halftone: boolean;
+    oldMovie: boolean;
+    kaleidoscope: boolean;
+    rgbSplit: boolean;
   };
   particles: {
     enabled: boolean;
@@ -136,6 +145,7 @@ export interface RendererConfig {
     rotate: boolean;
     sway: boolean; // Gentle panning
     hardKick: boolean; // Aggressive Z-punch
+    panic: boolean; // Aggressive erratic movement
   };
   sectionStyles: {
     verse: SectionStyle;

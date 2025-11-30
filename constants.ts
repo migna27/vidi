@@ -1,4 +1,5 @@
 
+
 import { LyricData, RendererConfig } from "./types";
 
 export const FONTS = [
@@ -162,7 +163,11 @@ export const TEMPLATES: RendererConfig[] = [
       barrelDistortion: false,
       mosaic: false,
       sepia: false,
-      grayscale: false
+      grayscale: false,
+      halftone: false,
+      oldMovie: false,
+      kaleidoscope: false,
+      rgbSplit: false
     },
     particles: {
       enabled: true,
@@ -176,7 +181,8 @@ export const TEMPLATES: RendererConfig[] = [
       zoomBeat: true,
       rotate: true,
       sway: false,
-      hardKick: false
+      hardKick: false,
+      panic: false
     },
     sectionStyles: {
        verse: { enabled: false },
@@ -185,6 +191,120 @@ export const TEMPLATES: RendererConfig[] = [
        intro: { enabled: false },
        outro: { enabled: false }
     },
+    keyframes: []
+  },
+  {
+    id: 'vhs-horror',
+    name: 'VHS Horror',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#000000' },
+    colors: { text: '#b0b0b0', active: '#ff0000', secondary: '#500000' },
+    font: { family: 'Cinzel', weight: '700', italic: false },
+    animation: { entrance: 'typewriter', active: 'shiver', exit: 'burn' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'none' },
+    effects: { 
+      glow: 0.3, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
+    camera: { shake: true, zoomBeat: false, rotate: false, sway: false, hardKick: true, panic: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'abyssal-void',
+    name: 'Abyssal Void',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#020617', proceduralStyle: 'plasma', intensity: 0.3 },
+    colors: { text: '#94a3b8', active: '#38bdf8', secondary: '#1e293b' },
+    font: { family: 'Montserrat', weight: '400', italic: false },
+    animation: { entrance: 'sink', active: 'float', exit: 'sink' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
+    effects: { 
+      glow: 1.0, blur: true, chromaticAberration: false, vignette: true, scanlines: false, 
+      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 100, speed: 0.2, shape: 'circle', color: ['#0f172a', '#38bdf8', '#020617'] },
+    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false, panic: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'toxic-waste',
+    name: 'Toxic Waste',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#000000' },
+    colors: { text: '#a3e635', active: '#facc15', secondary: '#3f6212' },
+    font: { family: 'Oswald', weight: '700', italic: false },
+    animation: { entrance: 'inflate', active: 'jitter', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
+    effects: { 
+      glow: 0.7, blur: false, chromaticAberration: true, vignette: true, scanlines: false, 
+      filmGrain: true, mirror: false, invert: true, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 80, speed: 2.5, shape: 'hexagon', color: ['#a3e635', '#facc15'] },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+      id: 'paper-cutout',
+      name: 'Paper Cutout',
+      resolutionId: '4:5',
+      background: { type: 'solid', color: '#f5f5f4' },
+      colors: { text: '#1c1917', active: '#000000', secondary: '#44403c' },
+      font: { family: 'Permanent Marker', weight: '400', italic: false },
+      animation: { entrance: 'drop', active: 'swing', exit: 'drop' },
+      audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'none' },
+      effects: { 
+          glow: 0, blur: false, chromaticAberration: false, vignette: true, scanlines: false, 
+          filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+          sepia: true, grayscale: false, oldMovie: false, halftone: true, kaleidoscope: false, rgbSplit: false
+      },
+      particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
+      camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false },
+      sectionStyles: DEFAULT_SECTION_STYLES,
+      keyframes: []
+  },
+  {
+      id: 'strobe-club',
+      name: 'Strobe Club',
+      resolutionId: '1:1',
+      background: { type: 'solid', color: '#000000' },
+      colors: { text: '#ffffff', active: '#ffffff', secondary: '#888888' },
+      font: { family: 'Anton', weight: '900', italic: false },
+      animation: { entrance: 'slam', active: 'flash', exit: 'slam' },
+      audioReactivity: { enabled: true, sensitivity: 2.0, visualizerStyle: 'shockwave' },
+      effects: { 
+          glow: 0.2, blur: false, chromaticAberration: false, vignette: false, scanlines: false, 
+          filmGrain: false, mirror: false, invert: true, barrelDistortion: false, mosaic: false,
+          sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+      },
+      particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
+      camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false },
+      sectionStyles: DEFAULT_SECTION_STYLES,
+      keyframes: []
+  },
+  {
+    id: 'vaporwave-aesthetic',
+    name: 'Vaporwave',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#ff71ce', proceduralStyle: 'grid', intensity: 0.6 },
+    colors: { text: '#01cdfe', active: '#fffb96', secondary: '#b967ff' },
+    font: { family: 'Pacifico', weight: '400', italic: false },
+    animation: { entrance: 'stretch', active: 'wave', exit: 'blur' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'spectrum' },
+    effects: { 
+      glow: 0.7, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+    },
+    particles: { enabled: true, count: 40, speed: 0.5, shape: 'square', color: ['#01cdfe', '#b967ff', '#fffb96'] },
+    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false, panic: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
   {
@@ -204,7 +324,7 @@ export const TEMPLATES: RendererConfig[] = [
     },
     font: { family: 'Oswald', weight: '700', italic: false },
     animation: {
-      entrance: 'typewriter',
+      entrance: 'scramble',
       active: 'jitter',
       exit: 'slam'
     },
@@ -214,18 +334,9 @@ export const TEMPLATES: RendererConfig[] = [
       visualizerStyle: 'shockwave'
     },
     effects: {
-      glow: 0.4,
-      blur: false,
-      chromaticAberration: true,
-      vignette: true,
-      scanlines: true,
-      filmGrain: true,
-      mirror: false,
-      invert: true,
-      barrelDistortion: false,
-      mosaic: true,
-      sepia: false,
-      grayscale: false
+      glow: 0.4, blur: false, chromaticAberration: true, vignette: true, scanlines: true,
+      filmGrain: true, mirror: false, invert: true, barrelDistortion: false, mosaic: true,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: {
       enabled: true,
@@ -239,7 +350,8 @@ export const TEMPLATES: RendererConfig[] = [
       zoomBeat: false,
       rotate: false,
       sway: false,
-      hardKick: true
+      hardKick: true,
+      panic: false
     },
     sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#ff0000', camera_zoom_boost: 0.1 }},
     keyframes: []
@@ -256,10 +368,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { 
       glow: 0.3, blur: true, chromaticAberration: false, vignette: true, scanlines: true, 
       filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: true, grayscale: false
+      sepia: true, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 20, speed: 0.2, shape: 'circle', color: ['#ffffff', '#d6c4a8'] },
-    camera: { shake: true, zoomBeat: false, rotate: false, sway: true, hardKick: false },
+    camera: { shake: true, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -275,10 +387,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { 
       glow: 0, blur: false, chromaticAberration: true, vignette: false, scanlines: false, 
       filmGrain: false, mirror: true, invert: true, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: true
+      sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: true, rgbSplit: false
     },
     particles: { enabled: true, count: 50, speed: 3.0, shape: 'triangle', color: ['#000000', '#ffffff'] },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -294,29 +406,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { 
       glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: false, 
       filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [] },
-    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'vaporwave-aesthetic',
-    name: 'Vaporwave',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#ff71ce', proceduralStyle: 'grid', intensity: 0.6 },
-    colors: { text: '#01cdfe', active: '#fffb96', secondary: '#b967ff' },
-    font: { family: 'Pacifico', weight: '400', italic: false },
-    animation: { entrance: 'slide', active: 'wave', exit: 'blur' },
-    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'spectrum' },
-    effects: { 
-      glow: 0.7, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false
-    },
-    particles: { enabled: true, count: 40, speed: 0.5, shape: 'square', color: ['#01cdfe', '#b967ff', '#fffb96'] },
-    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false },
+    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -332,10 +425,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: { 
       glow: 0.5, blur: true, chromaticAberration: false, vignette: true, scanlines: false, 
       filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: true
+      sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 100, speed: 0.5, shape: 'circle', color: ['#dc2626', '#333333'] },
-    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: true },
+    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -346,15 +439,15 @@ export const TEMPLATES: RendererConfig[] = [
     background: { type: 'procedural', color: '#0f172a', proceduralStyle: 'stars', intensity: 0.2 },
     colors: { text: '#e2e8f0', active: '#ffffff', secondary: '#94a3b8' },
     font: { family: 'Playfair Display', weight: '400', italic: true },
-    animation: { entrance: 'fade', active: 'pulse', exit: 'fade' },
+    animation: { entrance: 'fade', active: 'float', exit: 'fade' },
     audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
     effects: {
       glow: 0.6, blur: true, chromaticAberration: false, vignette: true, scanlines: false,
       filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 200, speed: 0.1, shape: 'circle', color: ['#ffffff', '#94a3b8'] },
-    camera: { shake: false, zoomBeat: false, rotate: true, sway: true, hardKick: false },
+    camera: { shake: false, zoomBeat: false, rotate: true, sway: true, hardKick: false, panic: false },
     sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#e0f2fe', effects_glow_boost: 0.3 } },
     keyframes: []
   },
@@ -370,10 +463,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: {
       glow: 0.4, blur: false, chromaticAberration: true, vignette: false, scanlines: true,
       filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: true,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 50, speed: 2.0, shape: 'square', color: ['#33ff00', '#ff00ff'] },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -389,10 +482,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: {
       glow: 0.2, blur: false, chromaticAberration: true, vignette: false, scanlines: false,
       filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 80, speed: 3.0, shape: 'note', color: ['#ff0055', '#ffee00'] },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: true, hardKick: true },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false },
     sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#00ffff', camera_zoom_boost: 0.15 } },
     keyframes: []
   },
@@ -408,10 +501,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: {
       glow: 0.8, blur: true, chromaticAberration: true, vignette: true, scanlines: false,
       filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 60, speed: 4.0, shape: 'triangle', color: ['#ef4444', '#f87171', '#fee2e2'] },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -427,10 +520,10 @@ export const TEMPLATES: RendererConfig[] = [
     effects: {
       glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: false,
       filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: true, count: 30, speed: 0.2, shape: 'circle', color: ['#a78bfa', '#c4b5fd'] },
-    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false },
+    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   }
