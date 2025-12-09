@@ -36,6 +36,36 @@ const ToggleInput = ({ label, value, onChange }: { label: string, value: boolean
   </div>
 );
 
+const MultiToggleInput = ({ label, values, options, onChange }: { label: string, values: string[], options: string[], onChange: (v: string[]) => void }) => (
+    <div className="flex flex-col gap-2">
+      <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
+      <div className="flex flex-wrap gap-2">
+        {options.map(opt => {
+            const isActive = values.includes(opt);
+            return (
+                <button
+                    key={opt}
+                    onClick={() => {
+                        if (isActive) {
+                            onChange(values.filter(v => v !== opt));
+                        } else {
+                            onChange([...values, opt]);
+                        }
+                    }}
+                    className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all border ${
+                        isActive 
+                        ? 'bg-cyan-600 text-white border-cyan-500' 
+                        : 'bg-neutral-800 text-gray-400 border-white/5 hover:border-white/20'
+                    }`}
+                >
+                    {opt}
+                </button>
+            );
+        })}
+      </div>
+    </div>
+);
+
 const SelectInput = ({ label, value, options, onChange }: { label: string, value: string, options: string[], onChange: (v: any) => void }) => (
   <div className="flex flex-col gap-1">
     <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
@@ -117,12 +147,25 @@ const KeyframeEditor: React.FC<KeyframeEditorProps> = ({ keyframe, defaults, onU
                 />
                 
                 {/* Image Effect Override in Keyframe */}
-                <SelectInput 
-                    label="BG Image Effect" 
-                    value={keyframe.values.image_effect || defaults.background.imageEffect || 'none'} 
-                    options={['none', 'dark-error', 'red-error', 'zoom-slow']} 
-                    onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, image_effect: v } })} 
+                <MultiToggleInput 
+                    label="Active Image Effects" 
+                    values={keyframe.values.image_effects || defaults.background.imageEffects || []} 
+                    options={['dark-error', 'red-error', 'zoom-slow', 'chromatic-shift', 'alert', 'thermal', 'vhs-stripes']} 
+                    onChange={(v) => onUpdate(keyframe.id, { values: { ...keyframe.values, image_effects: v as ImageEffect[] } })} 
                 />
+
+                <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Effect Speed</span>
+                        <span>{(keyframe.values.image_effect_speed ?? defaults.background.imageEffectSpeed ?? 1.0).toFixed(1)}x</span>
+                    </div>
+                    <input 
+                        type="range" min="0.1" max="5.0" step="0.1" 
+                        value={keyframe.values.image_effect_speed ?? defaults.background.imageEffectSpeed ?? 1.0} 
+                        onChange={(e) => onUpdate(keyframe.id, { values: { ...keyframe.values, image_effect_speed: parseFloat(e.target.value) } })}
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                </div>
 
                 <div>
                     <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -288,7 +331,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         effects_glow: config.effects.glow,
         camera_zoom: 0,
         camera_rotate: 0,
-        image_effect: config.background.imageEffect || 'none'
+        image_effects: config.background.imageEffects || [],
+        image_effect_speed: config.background.imageEffectSpeed || 1.0
       }
     };
     const newConfig = { ...config, keyframes: [...(config.keyframes || []), newKeyframe].sort((a, b) => a.time - b.time) };
@@ -599,7 +643,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         <SelectInput 
                                             label="Entrance" 
                                             value={style.animation?.entrance || config.animation.entrance} 
-                                            options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch']} 
+                                            options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
                                             onChange={(v) => {
                                                 const currentAnim = style.animation || {};
                                                 updateSectionStyle(key, 'animation', { ...currentAnim, entrance: v });
@@ -608,7 +652,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         <SelectInput 
                                             label="Active" 
                                             value={style.animation?.active || config.animation.active} 
-                                            options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing']} 
+                                            options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
                                             onChange={(v) => {
                                                 const currentAnim = style.animation || {};
                                                 updateSectionStyle(key, 'animation', { ...currentAnim, active: v });
@@ -757,12 +801,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                     />
                                 </>
                              ) : (
-                                <SelectInput 
-                                    label="Image Effect" 
-                                    value={config.background.imageEffect || 'none'} 
-                                    options={['none', 'dark-error', 'red-error', 'zoom-slow']} 
-                                    onChange={(v) => updateNested('background', 'imageEffect', v)} 
-                                />
+                                <>
+                                    <MultiToggleInput 
+                                        label="Active Effects" 
+                                        values={config.background.imageEffects || []} 
+                                        options={['dark-error', 'red-error', 'zoom-slow', 'chromatic-shift', 'alert', 'thermal', 'vhs-stripes']} 
+                                        onChange={(v) => updateNested('background', 'imageEffects', v)} 
+                                    />
+                                    <div className="pt-2">
+                                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                            <span>Effect Speed</span>
+                                            <span>{(config.background.imageEffectSpeed || 1.0).toFixed(1)}x</span>
+                                        </div>
+                                        <input 
+                                            type="range" min="0.1" max="5.0" step="0.1" 
+                                            value={config.background.imageEffectSpeed || 1.0} 
+                                            onChange={(e) => updateNested('background', 'imageEffectSpeed', parseFloat(e.target.value))}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                        />
+                                    </div>
+                                </>
                              )}
                              
                              <div className="pt-2">
@@ -820,7 +878,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="Font Family"
                    value={config.font.family}
-                   options={['Montserrat', 'Anton', 'Bebas Neue', 'Lobster', 'Pacifico', 'Permanent Marker', 'Press Start 2P', 'Cinzel', 'Oswald', 'Playfair Display']} 
+                   options={FONTS} 
                    onChange={(v) => updateNested('font', 'family', v)}
                 />
 
@@ -849,13 +907,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="In" 
                    value={config.animation.entrance} 
-                   options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch']} 
+                   options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
                    onChange={(v) => updateNested('animation', 'entrance', v)} 
                 />
                 <SelectInput 
                    label="Active" 
                    value={config.animation.active} 
-                   options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing']} 
+                   options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
                    onChange={(v) => updateNested('animation', 'active', v)} 
                 />
                 <SelectInput 
@@ -879,6 +937,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                    <ToggleInput label="Sway" value={config.camera.sway} onChange={(v) => updateNested('camera', 'sway', v)} />
                    <ToggleInput label="Hard Kick" value={config.camera.hardKick} onChange={(v) => updateNested('camera', 'hardKick', v)} />
                    <ToggleInput label="Panic" value={config.camera.panic} onChange={(v) => updateNested('camera', 'panic', v)} />
+                   <ToggleInput label="Screen Pump" value={config.camera.screenPump} onChange={(v) => updateNested('camera', 'screenPump', v)} />
               </div>
             </section>
 
@@ -902,10 +961,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                  </div>
                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     <ToggleInput label="Blur" value={config.effects.blur} onChange={(v) => updateNested('effects', 'blur', v)} />
-                    <ToggleInput label="Chromatic" value={config.effects.chromaticAberration} onChange={(v) => updateNested('effects', 'chromaticAberration', v)} />
+                    <ToggleInput label="Reactive CA" value={config.effects.chromaticAberration} onChange={(v) => updateNested('effects', 'chromaticAberration', v)} />
                     <ToggleInput label="Vignette" value={config.effects.vignette} onChange={(v) => updateNested('effects', 'vignette', v)} />
                     <ToggleInput label="Scanlines" value={config.effects.scanlines} onChange={(v) => updateNested('effects', 'scanlines', v)} />
-                    <ToggleInput label="Film Grain" value={config.effects.filmGrain} onChange={(v) => updateNested('effects', 'filmGrain', v)} />
+                    <ToggleInput label="CRT Noise" value={config.effects.filmGrain} onChange={(v) => updateNested('effects', 'filmGrain', v)} />
                     <ToggleInput label="Mirror" value={config.effects.mirror} onChange={(v) => updateNested('effects', 'mirror', v)} />
                     <ToggleInput label="Inv. Beat" value={config.effects.invert} onChange={(v) => updateNested('effects', 'invert', v)} />
                     <ToggleInput label="Distort" value={config.effects.barrelDistortion} onChange={(v) => updateNested('effects', 'barrelDistortion', v)} />
@@ -935,6 +994,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             value={config.particles.shape} 
                             options={['circle', 'square', 'star', 'hexagon', 'triangle', 'note']} 
                             onChange={(v) => updateNested('particles', 'shape', v)} 
+                        />
+                        <SelectInput 
+                            label="Behavior" 
+                            value={config.particles.particleBehavior || 'drift'} 
+                            options={['drift', 'rise']} 
+                            onChange={(v) => updateNested('particles', 'particleBehavior', v)} 
                         />
                         <div className="space-y-3 pt-2">
                             <div>

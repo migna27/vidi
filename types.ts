@@ -82,14 +82,14 @@ export interface RenderStatus {
   totalFrames?: number;
 }
 
-export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch';
-export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing';
+export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch' | 'stack-pop';
+export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing' | 'glitch-shake';
 export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
 export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
-export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow';
+export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes';
 
 export interface KeyframeValues {
   colors_text?: string;
@@ -98,7 +98,8 @@ export interface KeyframeValues {
   effects_glow?: number;
   camera_zoom?: number; 
   camera_rotate?: number;
-  image_effect?: ImageEffect;
+  image_effects?: ImageEffect[]; // Changed to array
+  image_effect_speed?: number; // New speed control
 }
 
 export interface SectionStyle {
@@ -139,7 +140,8 @@ export interface RendererConfig {
     color: string; // Base color or fallback
     url?: string; // Blob URL for image or video
     proceduralStyle?: ProceduralStyle;
-    imageEffect?: ImageEffect; // New field for static config
+    imageEffects?: ImageEffect[]; // Changed to array
+    imageEffectSpeed?: number; // New speed control
     intensity?: number; // Opacity (Video/Image) or Speed/Brightness (Procedural)
     playbackSpeed?: number; // Playback rate for Video
   };
@@ -187,6 +189,7 @@ export interface RendererConfig {
     speed: number;
     shape: ParticleShape;
     color: string[]; // Palette
+    particleBehavior: 'drift' | 'rise';
   };
   camera: {
     shake: boolean;
@@ -195,6 +198,7 @@ export interface RendererConfig {
     sway: boolean; // Gentle panning
     hardKick: boolean; // Aggressive Z-punch
     panic: boolean; // Aggressive erratic movement
+    screenPump: boolean;
   };
   sectionStyles: {
     verse: SectionStyle;
