@@ -128,19 +128,84 @@ const DEFAULT_SECTION_STYLES = {
 
 export const TEMPLATES: RendererConfig[] = [
   {
-    id: 'neon-night',
-    name: 'Neon Night',
+    id: 'kinetic-mix',
+    name: 'Kinetic Mix',
     resolutionId: '16:9',
     background: {
       type: 'solid',
-      color: '#050505',
+      color: '#000000',
       playbackSpeed: 1.0,
       imageEffects: [],
       imageEffectSpeed: 1.0
     },
     colors: {
       text: '#ffffff',
-      active: '#22d3ee', // Cyan
+      active: '#00ff00',
+      secondary: '#333333'
+    },
+    font: { family: 'Anton', weight: '900', italic: false },
+    animation: {
+      entrance: 'random', // Dynamic randomness
+      active: 'random', // Dynamic randomness
+      exit: 'fade'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.2,
+      visualizerStyle: 'none'
+    },
+    effects: {
+      glow: 0.0,
+      blur: false,
+      chromaticAberration: true,
+      vignette: false,
+      scanlines: false,
+      filmGrain: true,
+      mirror: false,
+      invert: true,
+      barrelDistortion: false,
+      mosaic: false,
+      sepia: false,
+      grayscale: true,
+      halftone: false,
+      oldMovie: false,
+      kaleidoscope: false,
+      rgbSplit: false
+    },
+    particles: {
+      enabled: false,
+      count: 0,
+      speed: 0,
+      shape: 'circle',
+      color: [],
+      particleBehavior: 'drift'
+    },
+    camera: {
+      shake: true,
+      zoomBeat: true,
+      rotate: false,
+      sway: false,
+      hardKick: true,
+      panic: false,
+      screenPump: true
+    },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'neon-night',
+    name: 'Neon Night',
+    resolutionId: '16:9',
+    background: {
+      type: 'solid',
+      color: '#0a0a0a',
+      playbackSpeed: 1.0,
+      imageEffects: [],
+      imageEffectSpeed: 1.0
+    },
+    colors: {
+      text: '#e0e0e0', // Bright white-grey for legibility
+      active: '#00ffff', // Cyan
       secondary: '#a855f7' // Purple
     },
     font: { family: 'Montserrat', weight: '900', italic: false },
@@ -159,8 +224,8 @@ export const TEMPLATES: RendererConfig[] = [
       blur: true,
       chromaticAberration: true,
       vignette: true,
-      scanlines: false,
-      filmGrain: false,
+      scanlines: false, // Disabled for clarity
+      filmGrain: true, // Subtle grain
       mirror: false,
       invert: false,
       barrelDistortion: false,
@@ -170,14 +235,14 @@ export const TEMPLATES: RendererConfig[] = [
       halftone: false,
       oldMovie: false,
       kaleidoscope: false,
-      rgbSplit: false
+      rgbSplit: true
     },
     particles: {
       enabled: true,
-      count: 150,
+      count: 100,
       speed: 1.0,
       shape: 'circle',
-      color: ['#22d3ee', '#a855f7', '#ffffff', '#38bdf8', '#c084fc'],
+      color: ['#00ffff', '#a855f7', '#ffffff'],
       particleBehavior: 'drift'
     },
     camera: {
@@ -191,312 +256,68 @@ export const TEMPLATES: RendererConfig[] = [
     },
     sectionStyles: {
        verse: { enabled: false },
-       chorus: { enabled: true, colors_active: '#d946ef', effects_glow_boost: 0.3, camera_zoom_boost: 0.2 },
-       bridge: { enabled: true, colors_active: '#facc15', effects_glow_boost: 0.1 },
+       chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.3, camera_zoom_boost: 0.2 },
+       bridge: { enabled: true, colors_active: '#ffff00', effects_glow_boost: 0.1 },
        intro: { enabled: false },
        outro: { enabled: false }
     },
     keyframes: []
   },
   {
+    id: 'cyber-punk',
+    name: 'Cyber Punk',
+    resolutionId: '16:9',
+    background: { type: 'solid', color: '#050505', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#fee02f', active: '#00f0ff', secondary: '#ff003c' },
+    font: { family: 'Oswald', weight: '700', italic: true },
+    animation: { entrance: 'glitch', active: 'glitch-shake', exit: 'slam' },
+    audioReactivity: { enabled: true, sensitivity: 1.3, visualizerStyle: 'shockwave' },
+    effects: { 
+      glow: 0.6, blur: false, chromaticAberration: true, vignette: true, scanlines: true, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+    },
+    particles: { enabled: true, count: 40, speed: 4, shape: 'triangle', color: ['#fee02f', '#00f0ff', '#ff003c'], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'dreamscape',
+    name: 'Dreamscape',
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: 'stars', intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#e2e8f0', active: '#c4b5fd', secondary: '#818cf8' },
+    font: { family: 'Playfair Display', weight: '700', italic: true },
+    animation: { entrance: 'blur', active: 'float', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
+    effects: { 
+      glow: 0.9, blur: true, chromaticAberration: false, vignette: true, scanlines: false, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 150, speed: 0.2, shape: 'circle', color: ['#c4b5fd', '#ffffff'], particleBehavior: 'rise' },
+    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
     id: 'vhs-horror',
     name: 'VHS Horror',
     resolutionId: '16:9',
-    background: { type: 'solid', color: '#000000', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#b0b0b0', active: '#ff0000', secondary: '#500000' },
+    background: { type: 'solid', color: '#020202', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#d4d4d4', active: '#ff0000', secondary: '#520000' }, // Improved contrast
     font: { family: 'Cinzel', weight: '700', italic: false },
     animation: { entrance: 'typewriter', active: 'shiver', exit: 'burn' },
     audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'none' },
     effects: { 
-      glow: 0.3, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
+      glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
       filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
       sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
     camera: { shake: true, zoomBeat: false, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-    {
-    id: 'glitch-pop',
-    name: 'Glitch Pop',
-    resolutionId: '9:16',
-    background: { type: 'solid', color: '#111111', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#ffffff', active: '#00ff00', secondary: '#ff00ff' },
-    font: { family: 'Montserrat', weight: '900', italic: false },
-    animation: {
-      entrance: 'stack-pop',
-      active: 'glitch-shake',
-      exit: 'fade'
-    },
-    audioReactivity: { enabled: true, sensitivity: 1.3, visualizerStyle: 'shockwave' },
-    effects: { 
-      glow: 0.5, blur: false, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: true, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
-    },
-    particles: { 
-      enabled: true, 
-      count: 50, 
-      speed: 1, 
-      shape: 'circle', 
-      color: ['#00ff00', '#ffffff'],
-      particleBehavior: 'rise' 
-    },
-    camera: { 
-      shake: true, 
-      zoomBeat: false, 
-      rotate: false, 
-      sway: false, 
-      hardKick: false, 
-      panic: false,
-      screenPump: true
-    },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'abyssal-void',
-    name: 'Abyssal Void',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#020617', proceduralStyle: 'plasma', intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#94a3b8', active: '#38bdf8', secondary: '#1e293b' },
-    font: { family: 'Montserrat', weight: '400', italic: false },
-    animation: { entrance: 'sink', active: 'float', exit: 'sink' },
-    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
-    effects: { 
-      glow: 1.0, blur: true, chromaticAberration: false, vignette: true, scanlines: false, 
-      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 100, speed: 0.2, shape: 'circle', color: ['#0f172a', '#38bdf8', '#020617'], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'toxic-waste',
-    name: 'Toxic Waste',
-    resolutionId: '16:9',
-    background: { type: 'solid', color: '#000000', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#a3e635', active: '#facc15', secondary: '#3f6212' },
-    font: { family: 'Oswald', weight: '700', italic: false },
-    animation: { entrance: 'inflate', active: 'jitter', exit: 'glitch' },
-    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
-    effects: { 
-      glow: 0.7, blur: false, chromaticAberration: true, vignette: true, scanlines: false, 
-      filmGrain: true, mirror: false, invert: true, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 80, speed: 2.5, shape: 'hexagon', color: ['#a3e635', '#facc15'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-      id: 'paper-cutout',
-      name: 'Paper Cutout',
-      resolutionId: '4:5',
-      background: { type: 'solid', color: '#f5f5f4', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-      colors: { text: '#1c1917', active: '#000000', secondary: '#44403c' },
-      font: { family: 'Permanent Marker', weight: '400', italic: false },
-      animation: { entrance: 'drop', active: 'swing', exit: 'drop' },
-      audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'none' },
-      effects: { 
-          glow: 0, blur: false, chromaticAberration: false, vignette: true, scanlines: false, 
-          filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-          sepia: true, grayscale: false, oldMovie: false, halftone: true, kaleidoscope: false, rgbSplit: false
-      },
-      particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
-      camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-      sectionStyles: DEFAULT_SECTION_STYLES,
-      keyframes: []
-  },
-  {
-      id: 'strobe-club',
-      name: 'Strobe Club',
-      resolutionId: '1:1',
-      background: { type: 'solid', color: '#000000', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-      colors: { text: '#ffffff', active: '#ffffff', secondary: '#888888' },
-      font: { family: 'Anton', weight: '900', italic: false },
-      animation: { entrance: 'slam', active: 'flash', exit: 'slam' },
-      audioReactivity: { enabled: true, sensitivity: 2.0, visualizerStyle: 'shockwave' },
-      effects: { 
-          glow: 0.2, blur: false, chromaticAberration: false, vignette: false, scanlines: false, 
-          filmGrain: false, mirror: false, invert: true, barrelDistortion: false, mosaic: false,
-          sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
-      },
-      particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
-      camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
-      sectionStyles: DEFAULT_SECTION_STYLES,
-      keyframes: []
-  },
-  {
-    id: 'vaporwave-aesthetic',
-    name: 'Vaporwave',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#ff71ce', proceduralStyle: 'grid', intensity: 0.6, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#01cdfe', active: '#fffb96', secondary: '#b967ff' },
-    font: { family: 'Pacifico', weight: '400', italic: false },
-    animation: { entrance: 'stretch', active: 'wave', exit: 'blur' },
-    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'spectrum' },
-    effects: { 
-      glow: 0.7, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
-    },
-    particles: { enabled: true, count: 40, speed: 0.5, shape: 'square', color: ['#01cdfe', '#b967ff', '#fffb96'], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'cyber-glitch',
-    name: 'Cyber Glitch',
-    resolutionId: '16:9',
-    background: {
-      type: 'procedural',
-      color: '#000000',
-      proceduralStyle: 'matrix',
-      intensity: 1.0,
-      playbackSpeed: 1.0,
-      imageEffects: [],
-      imageEffectSpeed: 1.0
-    },
-    colors: {
-      text: '#e2e8f0',
-      active: '#00ff00', // Matrix Green
-      secondary: '#ff0000' // Red
-    },
-    font: { family: 'Oswald', weight: '700', italic: false },
-    animation: {
-      entrance: 'scramble',
-      active: 'jitter',
-      exit: 'slam'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.2,
-      visualizerStyle: 'shockwave'
-    },
-    effects: {
-      glow: 0.4, blur: false, chromaticAberration: true, vignette: true, scanlines: true,
-      filmGrain: true, mirror: false, invert: true, barrelDistortion: false, mosaic: true,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: {
-      enabled: true,
-      count: 40,
-      speed: 3.0,
-      shape: 'hexagon',
-      color: ['#00ff00', '#003300', '#ffffff'],
-      particleBehavior: 'drift'
-    },
-    camera: {
-      shake: true,
-      zoomBeat: false,
-      rotate: false,
-      sway: false,
-      hardKick: true,
-      panic: false,
-      screenPump: false
-    },
-    sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#ff0000', camera_zoom_boost: 0.1 }},
-    keyframes: []
-  },
-  {
-    id: 'vintage-film',
-    name: 'Vintage Film',
-    resolutionId: '16:9',
-    background: { type: 'solid', color: '#1a1005', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#d6c4a8', active: '#ffffff', secondary: '#8a6e45' },
-    font: { family: 'Playfair Display', weight: '700', italic: true },
-    animation: { entrance: 'blur', active: 'pulse', exit: 'fade' },
-    audioReactivity: { enabled: true, sensitivity: 0.6, visualizerStyle: 'none' },
-    effects: { 
-      glow: 0.3, blur: true, chromaticAberration: false, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: true, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 20, speed: 0.2, shape: 'circle', color: ['#ffffff', '#d6c4a8'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'hyper-kinetic',
-    name: 'Hyper Kinetic',
-    resolutionId: '9:16',
-    background: { type: 'solid', color: '#facc15', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 }, // Yellow
-    colors: { text: '#000000', active: '#ffffff', secondary: '#000000' },
-    font: { family: 'Anton', weight: '900', italic: false },
-    animation: { entrance: 'slam', active: 'pop', exit: 'drop' },
-    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
-    effects: { 
-      glow: 0, blur: false, chromaticAberration: true, vignette: false, scanlines: false, 
-      filmGrain: false, mirror: true, invert: true, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: true, rgbSplit: false
-    },
-    particles: { enabled: true, count: 50, speed: 3.0, shape: 'triangle', color: ['#000000', '#ffffff'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'corporate-clean',
-    name: 'Corporate Clean',
-    resolutionId: '16:9',
-    background: { type: 'solid', color: '#ffffff', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#1e293b', active: '#3b82f6', secondary: '#94a3b8' },
-    font: { family: 'Montserrat', weight: '700', italic: false },
-    animation: { entrance: 'slide', active: 'pulse', exit: 'slide' },
-    audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'none' },
-    effects: { 
-      glow: 0, blur: false, chromaticAberration: false, vignette: false, scanlines: false, 
-      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'gothic-realm',
-    name: 'Gothic Realm',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#000000', proceduralStyle: 'tunnel', intensity: 0.2, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#9ca3af', active: '#dc2626', secondary: '#4b5563' },
-    font: { family: 'Cinzel', weight: '700', italic: false },
-    animation: { entrance: 'fade', active: 'flash', exit: 'fade' },
-    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'shockwave' },
-    effects: { 
-      glow: 0.5, blur: true, chromaticAberration: false, vignette: true, scanlines: false, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 100, speed: 0.5, shape: 'circle', color: ['#dc2626', '#333333'], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'starlight-ballad',
-    name: 'Starlight Ballad',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#0f172a', proceduralStyle: 'stars', intensity: 0.2, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#e2e8f0', active: '#ffffff', secondary: '#94a3b8' },
-    font: { family: 'Playfair Display', weight: '400', italic: true },
-    animation: { entrance: 'fade', active: 'float', exit: 'fade' },
-    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
-    effects: {
-      glow: 0.6, blur: true, chromaticAberration: false, vignette: true, scanlines: false,
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 200, speed: 0.1, shape: 'circle', color: ['#ffffff', '#94a3b8'], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: false, rotate: true, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#e0f2fe', effects_glow_boost: 0.3 } },
     keyframes: []
   },
   {
@@ -518,61 +339,4 @@ export const TEMPLATES: RendererConfig[] = [
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
-  {
-    id: 'tok-hype',
-    name: 'Tok Hype',
-    resolutionId: '9:16',
-    background: { type: 'solid', color: '#000000', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#ffffff', active: '#ffee00', secondary: '#ff0055' },
-    font: { family: 'Montserrat', weight: '900', italic: false },
-    animation: { entrance: 'elastic', active: 'bounce', exit: 'slide' },
-    audioReactivity: { enabled: true, sensitivity: 1.4, visualizerStyle: 'shockwave' },
-    effects: {
-      glow: 0.2, blur: false, chromaticAberration: true, vignette: false, scanlines: false,
-      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 80, speed: 3.0, shape: 'note', color: ['#ff0055', '#ffee00'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false, screenPump: false },
-    sectionStyles: { ...DEFAULT_SECTION_STYLES, chorus: { enabled: true, colors_active: '#00ffff', camera_zoom_boost: 0.15 } },
-    keyframes: []
-  },
-  {
-    id: 'crimson-heat',
-    name: 'Crimson Heat',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#450a0a', proceduralStyle: 'plasma', intensity: 1.2, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#fca5a5', active: '#ffffff', secondary: '#ef4444' },
-    font: { family: 'Oswald', weight: '700', italic: false },
-    animation: { entrance: 'slam', active: 'jitter', exit: 'blur' },
-    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'shockwave' },
-    effects: {
-      glow: 0.8, blur: true, chromaticAberration: true, vignette: true, scanlines: false,
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 60, speed: 4.0, shape: 'triangle', color: ['#ef4444', '#f87171', '#fee2e2'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'lofi-chill',
-    name: 'Lo-Fi Chill',
-    resolutionId: '16:9',
-    background: { type: 'procedural', color: '#4c1d95', proceduralStyle: 'plasma', intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#ddd6fe', active: '#a78bfa', secondary: '#8b5cf6' },
-    font: { family: 'Pacifico', weight: '400', italic: false },
-    animation: { entrance: 'blur', active: 'wave', exit: 'fade' },
-    audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'orb' },
-    effects: {
-      glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: false,
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 30, speed: 0.2, shape: 'circle', color: ['#a78bfa', '#c4b5fd'], particleBehavior: 'drift' },
-    camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  }
 ];

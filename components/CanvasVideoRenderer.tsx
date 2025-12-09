@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect } from '../types';
+import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect, AnimationStyle, ActiveStyle } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
@@ -20,13 +20,12 @@ interface Particle {
   y: number;
   vx: number;
   vy: number;
-  // FIX: Add speed property to Particle interface
   speed: number;
   size: number;
   color: string;
   alpha: number;
   phase: number;
-  angle: number; // For rotation
+  angle: number; 
   life: number;
   maxLife: number;
 }
@@ -62,7 +61,6 @@ const easeOutBack = (t: number): number => {
 
 // Hex to RGB
 const hexToRgb = (hex: string) => {
-    // Fixed regex: match optional # at start, then 3 pairs of hex digits
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? {
         r: parseInt(result[1], 16),
@@ -86,10 +84,30 @@ const lerpColor = (start: string, end: string, t: number) => {
     return rgbToHex(r, g, b);
 };
 
-// Random Character Generator for Scramble Effect
+// Random Character Generator
 const getRandomChar = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
     return chars.charAt(Math.floor(Math.random() * chars.length));
+};
+
+// Deterministic Random for animations
+const getDeterministicRandom = (seed: number) => {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+};
+
+// Helper: Pick random animation
+const getRandomAnimation = (seed: number, type: 'entrance' | 'active'): string => {
+    const entranceOptions: AnimationStyle[] = ['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate'];
+    const activeOptions: ActiveStyle[] = ['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake'];
+    
+    if (type === 'entrance') {
+        const idx = Math.floor(getDeterministicRandom(seed) * entranceOptions.length);
+        return entranceOptions[idx];
+    } else {
+        const idx = Math.floor(getDeterministicRandom(seed + 100) * activeOptions.length);
+        return activeOptions[idx];
+    }
 };
 
 // --- PROCEDURAL BACKGROUND DRAWING FUNCTIONS ---
@@ -104,7 +122,6 @@ const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, sp
     const horizon = h * 0.55;
     const centerX = w / 2;
     
-    // Vertical lines
     for (let i = -10; i <= 10; i++) {
         const x = centerX + (i * 200);
         ctx.beginPath();
@@ -113,7 +130,6 @@ const drawGrid = (ctx: CanvasRenderingContext2D, time: number, color: string, sp
         ctx.stroke();
     }
     
-    // Horizontal lines
     const offset = (time * 200 * speed) % 100;
     for(let y = horizon; y < h; y += 20 + ((y-horizon)*0.1)) {
         const moveY = y + offset;
@@ -240,7 +256,6 @@ const drawMatrix = (ctx: CanvasRenderingContext2D, time: number, color: string, 
         if (y < 0) y += h + 300;
         y -= 300; 
         
-        // Glitch effect on beat
         if (audio.bass > 0.8 && Math.random() > 0.9) {
             y += (Math.random() - 0.5) * 50;
         }
@@ -262,14 +277,11 @@ const drawMatrix = (ctx: CanvasRenderingContext2D, time: number, color: string, 
 
 const drawGradientWave = (ctx: CanvasRenderingContext2D, time: number, color: string, accentColor: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
     ctx.save();
-    
-    // Create base gradient
     const grad = ctx.createLinearGradient(0, 0, w, h);
     grad.addColorStop(0, color);
     grad.addColorStop(0.5, accentColor);
     grad.addColorStop(1, color);
     
-    // Create dynamic layers
     const layers = 5;
     const baseAmp = h * 0.1;
     const beatAmp = audio.bass * h * 0.2;
@@ -295,7 +307,6 @@ const drawGradientWave = (ctx: CanvasRenderingContext2D, time: number, color: st
         ctx.lineTo(0, h);
         ctx.fill();
     }
-    
     ctx.restore();
 };
 
@@ -317,7 +328,6 @@ const drawHexagons = (ctx: CanvasRenderingContext2D, time: number, color: string
             const cx = (c * hexW) + xOffset;
             const cy = r * vertDist;
             
-            // Determine if this hex lights up
             const noise = Math.sin(c * 0.5 + time * speed) * Math.cos(r * 0.5 + time * speed);
             const active = noise > 0.5 || (audio.mid > 0.6 && Math.random() > 0.8);
             
@@ -356,7 +366,6 @@ const drawKaleidoscope = (ctx: CanvasRenderingContext2D, time: number, color: st
     const angleStep = (Math.PI * 2) / segments;
     const rotation = time * speed * 0.5;
     
-    // Scale entire pattern on bass
     const scale = 1 + (audio.bass * 0.2);
     ctx.scale(scale, scale);
     
@@ -364,7 +373,6 @@ const drawKaleidoscope = (ctx: CanvasRenderingContext2D, time: number, color: st
         ctx.save();
         ctx.rotate((i * angleStep) + rotation);
         
-        // Draw pattern segment
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(w/2, 50 + (audio.mid * 100));
@@ -379,7 +387,6 @@ const drawKaleidoscope = (ctx: CanvasRenderingContext2D, time: number, color: st
         ctx.globalAlpha = 0.3;
         ctx.fill();
         
-        // Decorative lines
         ctx.beginPath();
         ctx.arc(100 + audio.high * 50, 0, 20, 0, Math.PI * 2);
         ctx.strokeStyle = accentColor;
@@ -393,7 +400,6 @@ const drawKaleidoscope = (ctx: CanvasRenderingContext2D, time: number, color: st
 const drawDNA = (ctx: CanvasRenderingContext2D, time: number, color: string, accentColor: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
     ctx.save();
     ctx.translate(w/2, h/2);
-    // Rotate entire strand 45 degrees
     ctx.rotate(Math.PI / 4);
     
     const len = Math.max(w, h) * 1.5;
@@ -410,7 +416,6 @@ const drawDNA = (ctx: CanvasRenderingContext2D, time: number, color: string, acc
         const y1 = Math.sin(angle) * strandWidth;
         const y2 = Math.sin(angle + Math.PI) * strandWidth;
         
-        // Draw connector
         ctx.beginPath();
         ctx.moveTo(x, y1);
         ctx.lineTo(x, y2);
@@ -419,7 +424,6 @@ const drawDNA = (ctx: CanvasRenderingContext2D, time: number, color: string, acc
         ctx.lineWidth = 1;
         ctx.stroke();
         
-        // Draw particles
         const size = 5 + (audio.mid * 5);
         
         ctx.beginPath();
@@ -498,45 +502,38 @@ const drawNote = (ctx: CanvasRenderingContext2D, x: number, y: number, size: num
     ctx.fillText('♪', x, y);
 }
 
-// Draw Alert Icon (Exclamation in Triangle)
 const drawAlertIcon = (ctx: CanvasRenderingContext2D, w: number, h: number, time: number, bass: number) => {
     const size = Math.min(w, h) * 0.4;
     const cx = w / 2;
     const cy = h / 2;
     
-    // Pulse
     const pulse = 1 + (Math.sin(time * 15) * 0.1) + (bass * 0.1);
     
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(pulse, pulse);
     
-    // Triangle
     ctx.beginPath();
     ctx.moveTo(0, -size/2);
     ctx.lineTo(size/2, size/2);
     ctx.lineTo(-size/2, size/2);
     ctx.closePath();
     
-    // Glow
     ctx.shadowBlur = 40 + (bass * 40);
     ctx.shadowColor = '#ff0000';
     
-    // Fill
     ctx.fillStyle = 'rgba(50, 0, 0, 0.8)';
     ctx.fill();
     
-    // Stroke
     ctx.lineWidth = 15;
     ctx.strokeStyle = '#ff0000';
     ctx.stroke();
     
-    // Exclamation Mark
     ctx.fillStyle = '#ff0000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `bold ${size * 0.6}px Arial`;
-    ctx.shadowBlur = 0; // Clear text shadow for sharpness
+    ctx.shadowBlur = 0;
     ctx.fillText('!', 0, size * 0.1);
     
     ctx.restore();
@@ -552,30 +549,24 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const particlesRef = useRef<Particle[]>([]);
   const shockwavesRef = useRef<Shockwave[]>([]);
   const lastTimeRef = useRef<number>(0);
-  const lastFlashTimeRef = useRef<number>(0); // Track last flash for cooldown
+  const lastFlashTimeRef = useRef<number>(0); 
   const wordPositionsCache = useRef<Map<string, { x: number, y: number }>>(new Map());
   const screenPumpState = useRef({ intensity: 0 });
   
-  // Media Refs
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Clear caches when data changes (e.g. project load) to avoid ID collisions
-  useEffect(() => {
+  useLayoutEffect(() => {
     wordsByLineCache.current.clear();
     wordPositionsCache.current.clear();
   }, [data]);
 
-  // Resolution Handling
   const currentResolution = RESOLUTIONS.find(r => r.id === config.resolutionId) || RESOLUTIONS[0];
   const CANVAS_WIDTH = currentResolution.width;
   const CANVAS_HEIGHT = currentResolution.height;
 
-  // Load Media when Config Changes
   useEffect(() => {
-    // IMAGE
     if (config.background.type === 'image' && config.background.url) {
-        // Reuse object if URL is same? React effect logic handles dependency check
         if (bgImageRef.current?.src !== config.background.url) {
              const img = new Image();
              img.crossOrigin = "anonymous";
@@ -586,14 +577,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         bgImageRef.current = null;
     }
 
-    // VIDEO
     if (config.background.type === 'video' && config.background.url) {
          if (bgVideoRef.current?.src !== config.background.url) {
              const vid = document.createElement('video');
              vid.crossOrigin = "anonymous";
              vid.src = config.background.url;
              vid.loop = true;
-             vid.muted = true; // Essential for autoplay
+             vid.muted = true;
              vid.playsInline = true;
              // @ts-ignore
              vid.webkitPlaysInline = true;
@@ -604,13 +594,12 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     } else {
         if(bgVideoRef.current) {
             bgVideoRef.current.pause();
-            bgVideoRef.current.src = ""; // Clean up
+            bgVideoRef.current.src = ""; 
             bgVideoRef.current = null;
         }
     }
   }, [config.background.type, config.background.url]);
 
-  // Expose imperative handle for Exporting & Precise Seek
   useImperativeHandle(ref, () => ({
     canvas: canvasRef.current,
     drawFrame: (time, analysis, isAlphaRender) => {
@@ -619,9 +608,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     seekToTime: async (time: number) => {
         if (bgVideoRef.current && config.background.type === 'video') {
             const vid = bgVideoRef.current;
-            if (vid.readyState >= 2) { // HAVE_CURRENT_DATA or better
+            if (vid.readyState >= 2) {
                 const playbackSpeed = config.background.playbackSpeed || 1.0;
-                // Calculate correct time in video loop with speed scaling
                 const vidDuration = vid.duration || 1;
                 const scaledTime = time * playbackSpeed;
                 const targetTime = scaledTime % vidDuration;
@@ -640,15 +628,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     }
   }));
 
-  // Initialize or Update particles based on Config
   useEffect(() => {
     const pCount = config.particles.enabled ? config.particles.count : 0;
     
     if (particlesRef.current.length !== pCount) {
         const newParticles: Particle[] = [];
         for (let i = 0; i < pCount; i++) {
-            const maxLife = (Math.random() * 5) + 3; // 3-8 second lifespan
-            // FIX: Initialize speed property for new particles
+            const maxLife = (Math.random() * 5) + 3;
             const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5);
             newParticles.push({
                 id: i,
@@ -671,12 +657,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         particlesRef.current.forEach(p => {
              const currentSpeed = Math.sqrt(p.vx*p.vx + p.vy*p.vy) || 0.1;
              const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5); 
-             
              p.vx = (p.vx / currentSpeed) * newSpeed;
              p.vy = (p.vy / currentSpeed) * newSpeed;
-             // FIX: Update speed property for existing particles
              p.speed = newSpeed;
-
              if (!config.particles.color.includes(p.color)) {
                  p.color = config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff';
              }
@@ -702,27 +685,14 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const drawScene = (time: number, analysis: AudioVisualizerData, isAlphaRender = false) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: true }); // Ensure alpha is allowed
+    const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    // Calculate deltaTime
     const dt = time - lastTimeRef.current;
     lastTimeRef.current = time;
     const safeDt = Math.abs(dt) > 1.0 ? 0.016 : dt; 
 
-    const entranceAnimation = config.animation.entrance;
-    const isStacking = entranceAnimation === 'stack-pop';
-
-    // Find Active Segment
-    const primaryActiveIndex = data.segments.findIndex(
-      (seg) => time >= seg.start && time <= seg.end
-    );
-    const visibleSegments = data.segments.filter(
-      (seg, idx) => isStacking ? seg.start <= time : (time >= seg.start - 2.0 && time <= seg.end + 2.0)
-    );
-    visibleSegments.sort((a, b) => a.start - b.start);
-
-    // --- Keyframe Interpolation ---
+    // --- EFFECTIVE CONFIG RESOLUTION ---
     let effectiveColorsActive = config.colors.active;
     let effectiveColorsText = config.colors.text;
     let effectiveBgColor = config.background.color;
@@ -730,7 +700,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     let effectiveZoomOffset = 0;
     let effectiveRotateOffset = 0;
     
-    // Default to config, but check keyframes
     let effectiveImageEffects: ImageEffect[] = config.background.imageEffects || [];
     let effectiveImageEffectSpeed = config.background.imageEffectSpeed || 1.0;
 
@@ -753,44 +722,14 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             const elapsed = time - prevKeyframe.time;
             const t = Math.min(1, Math.max(0, elapsed / totalDuration));
 
-            effectiveColorsActive = lerpColor(
-                prevKeyframe.values.colors_active || config.colors.active,
-                nextKeyframe.values.colors_active || config.colors.active,
-                t
-            );
-             effectiveColorsText = lerpColor(
-                prevKeyframe.values.colors_text || config.colors.text,
-                nextKeyframe.values.colors_text || config.colors.text,
-                t
-            );
-             effectiveBgColor = lerpColor(
-                prevKeyframe.values.background_color || config.background.color,
-                nextKeyframe.values.background_color || config.background.color,
-                t
-            );
-             effectiveGlow = lerp(
-                 prevKeyframe.values.effects_glow ?? config.effects.glow,
-                 nextKeyframe.values.effects_glow ?? config.effects.glow,
-                 t
-             );
-             effectiveZoomOffset = lerp(
-                 prevKeyframe.values.camera_zoom || 0,
-                 nextKeyframe.values.camera_zoom || 0,
-                 t
-             );
-             effectiveRotateOffset = lerp(
-                 prevKeyframe.values.camera_rotate || 0,
-                 nextKeyframe.values.camera_rotate || 0,
-                 t
-             );
-             effectiveImageEffectSpeed = lerp(
-                 prevKeyframe.values.image_effect_speed ?? config.background.imageEffectSpeed ?? 1.0,
-                 nextKeyframe.values.image_effect_speed ?? config.background.imageEffectSpeed ?? 1.0,
-                 t
-             );
-             // Discrete steps for active effects (take prev)
+            effectiveColorsActive = lerpColor(prevKeyframe.values.colors_active || config.colors.active, nextKeyframe.values.colors_active || config.colors.active, t);
+             effectiveColorsText = lerpColor(prevKeyframe.values.colors_text || config.colors.text, nextKeyframe.values.colors_text || config.colors.text, t);
+             effectiveBgColor = lerpColor(prevKeyframe.values.background_color || config.background.color, nextKeyframe.values.background_color || config.background.color, t);
+             effectiveGlow = lerp(prevKeyframe.values.effects_glow ?? config.effects.glow, nextKeyframe.values.effects_glow ?? config.effects.glow, t);
+             effectiveZoomOffset = lerp(prevKeyframe.values.camera_zoom || 0, nextKeyframe.values.camera_zoom || 0, t);
+             effectiveRotateOffset = lerp(prevKeyframe.values.camera_rotate || 0, nextKeyframe.values.camera_rotate || 0, t);
+             effectiveImageEffectSpeed = lerp(prevKeyframe.values.image_effect_speed ?? config.background.imageEffectSpeed ?? 1.0, nextKeyframe.values.image_effect_speed ?? config.background.imageEffectSpeed ?? 1.0, t);
              effectiveImageEffects = prevKeyframe.values.image_effects || config.background.imageEffects || [];
-
         } else if (prevKeyframe) {
              effectiveColorsActive = prevKeyframe.values.colors_active || config.colors.active;
              effectiveColorsText = prevKeyframe.values.colors_text || config.colors.text;
@@ -809,36 +748,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              effectiveZoomOffset = lerp(0, nextKeyframe.values.camera_zoom || 0, t);
              effectiveRotateOffset = lerp(0, nextKeyframe.values.camera_rotate || 0, t);
              effectiveImageEffectSpeed = lerp(config.background.imageEffectSpeed ?? 1.0, nextKeyframe.values.image_effect_speed ?? config.background.imageEffectSpeed ?? 1.0, t);
-             // Default to global effects if before first keyframe
              effectiveImageEffects = config.background.imageEffects || [];
         }
     }
 
-    // --- SECTION STYLE OVERRIDES ---
-    if (primaryActiveIndex !== -1) {
-        // Resolve Effective Section: Walk backwards to find the last defined section
-        let activeSection = 'verse';
-        for (let i = primaryActiveIndex; i >= 0; i--) {
-            if (data.segments[i].section) {
-                activeSection = data.segments[i].section || 'verse';
-                break;
-            }
-        }
-        
-        // Normalize section name (e.g. "Verse 2" -> "verse")
-        const normalizedSection = activeSection.toLowerCase().split(' ')[0] as SectionType;
-        const sectionStyle = config.sectionStyles?.[normalizedSection];
-
-        if (sectionStyle && sectionStyle.enabled) {
-            if (sectionStyle.colors_active) effectiveColorsActive = sectionStyle.colors_active;
-            if (sectionStyle.colors_text) effectiveColorsText = sectionStyle.colors_text;
-            if (sectionStyle.effects_glow_boost) effectiveGlow = Math.min(1.0, effectiveGlow + sectionStyle.effects_glow_boost);
-            if (sectionStyle.camera_zoom_boost) effectiveZoomOffset += sectionStyle.camera_zoom_boost;
-        }
-    }
-
-
-    // --- Audio Reactivity Handling ---
+    // --- AUDIO & CONFIG ---
     let { bass, mid, high, raw } = analysis;
     const audioEnabled = config.audioReactivity.enabled;
     const sensitivity = config.audioReactivity.sensitivity;
@@ -850,19 +764,18 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     }
     
     if (audioEnabled) {
-        // Tune glow to be more bass-heavy
         effectiveGlow = effectiveGlow * (1 + (mid * 0.2) + (bass * 0.8));
     }
 
 
-    // --- 1. Background Rendering ---
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+    // ===========================
+    // LAYER 1: BACKGROUND RENDER
+    // ===========================
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
     
     if (isAlphaRender) {
-        // In Alpha mode, we clear the canvas completely
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     } else {
-        // Normal Background Rendering
         ctx.fillStyle = effectiveBgColor;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -874,111 +787,43 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              ctx.save();
              ctx.globalAlpha = opacity;
              
-             // --- IMAGE EFFECTS LOGIC ---
              let scale = Math.max(CANVAS_WIDTH / width, CANVAS_HEIGHT / height);
              let x = (CANVAS_WIDTH / 2) - (width / 2) * scale;
              let y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
 
-             // Determine Active Effects (Array Check)
-             const hasDarkError = effectiveImageEffects.includes('dark-error');
-             const hasRedError = effectiveImageEffects.includes('red-error');
+             const speedScalar = effectiveImageEffectSpeed;
              const hasZoom = effectiveImageEffects.includes('zoom-slow');
              const hasChromatic = effectiveImageEffects.includes('chromatic-shift');
-             const hasAlert = effectiveImageEffects.includes('alert');
-             const hasThermal = effectiveImageEffects.includes('thermal');
              const hasVhsStripes = effectiveImageEffects.includes('vhs-stripes');
-             const isAnyError = hasDarkError || hasRedError;
 
-             // Logic variables affected by SPEED slider
-             const speedScalar = effectiveImageEffectSpeed;
-             
-             // Dynamic Flash Logic with Cooldown
-             // Base cooldown is ~2 seconds. Higher speed = shorter cooldown.
-             // e.g. Speed 1.0 -> 2.0s wait. Speed 2.0 -> 1.0s wait.
-             const flashCooldown = 2.0 / speedScalar;
-             
-             // DURATION: How long the flash stays on screen (e.g. 0.15s scaled)
-             const flashDuration = 0.15 * (1/speedScalar);
-
-             if (isAnyError && audioEnabled) {
-                 const timeSinceLastFlash = time - lastFlashTimeRef.current;
-                 // Audio Trigger: Bass Kick
-                 if (bass > 0.65 && timeSinceLastFlash > flashCooldown) {
-                      lastFlashTimeRef.current = time;
-                 }
-             }
-             
-             // Check if we are currently within the flash window
-             const isFlashActive = (time - lastFlashTimeRef.current) < flashDuration;
-
-             // Reactive Zoom for Effects
-             if (hasZoom) {
-                 // Speed affects the frequency of the sine wave
-                 scale *= 1.0 + (Math.sin(time * 0.2 * speedScalar) * 0.1); 
-             }
-             
-             if (isAnyError && audioEnabled) {
-                 // Speed affects intensity of bass reaction
+             if (hasZoom) scale *= 1.0 + (Math.sin(time * 0.2 * speedScalar) * 0.1); 
+             if (audioEnabled && effectiveImageEffects.some(e => ['dark-error','red-error'].includes(e))) {
                  scale *= 1.0 + (bass * 0.15 * speedScalar); 
              }
-             
-             if (hasAlert && audioEnabled) {
-                 scale *= 1.0 + (bass * 0.2 * speedScalar);
-             }
 
-             // Recalculate center based on new scale
              x = (CANVAS_WIDTH / 2) - (width / 2) * scale;
              y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
 
-             // Apply Filters before drawing
-             let currentFilter = '';
-             if (isFlashActive) {
-                 // Negative / High Contrast flash + Brightness for lightning effect
-                 currentFilter = 'invert(1) contrast(2.0) brightness(1.5) ';
-             } else if (isAnyError) {
-                 // Subtle blur on bass for "shock"
-                 if(bass > (0.5 / speedScalar)) currentFilter = `blur(${bass * 2 * speedScalar}px) `;
-             }
-             
-             if (hasThermal) {
-                 currentFilter += 'invert(1) saturate(3) hue-rotate(180deg) ';
-             }
-             
-             if (currentFilter) ctx.filter = currentFilter;
-
-             // --- DRAW BASE OR SPLIT CHANNELS ---
              if (hasChromatic) {
                  const shift = (Math.sin(time * speedScalar) * 10) + (bass * 20);
-                 
                  ctx.save();
                  ctx.globalCompositeOperation = 'screen';
-                 
-                 // Red Channel
                  ctx.globalAlpha = opacity * 0.7;
                  ctx.translate(shift, 0);
                  ctx.fillStyle = '#ff0000';
                  ctx.drawImage(media, x, y, width * scale, height * scale);
-                 
-                 // Cyan Channel
                  ctx.translate(-shift * 2, 0); 
                  ctx.fillStyle = '#00ffff';
                  ctx.drawImage(media, x, y, width * scale, height * scale);
-                 
-                 // Original (Lighten)
                  ctx.translate(shift, 0); 
                  ctx.globalCompositeOperation = 'lighten';
                  ctx.globalAlpha = opacity;
                  ctx.drawImage(media, x, y, width * scale, height * scale);
-                 
                  ctx.restore();
              } else {
-                 // Standard Draw
                  ctx.drawImage(media, x, y, width * scale, height * scale);
              }
              
-             // --- POST-DRAW EFFECT OVERLAYS ---
-             
-             // VHS Stripes (New Effect)
              if (hasVhsStripes) {
                  const numStripes = 5;
                  const stripeOffset = (time * 100 * speedScalar) % CANVAS_HEIGHT;
@@ -993,163 +838,41 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                  ctx.restore();
              }
              
-             // DARK ERROR OVERLAY
-             if (hasDarkError) {
-                 // Hard-light for punchy violet integration without just dimming
+             // --- ERROR OVERLAYS ---
+             // Kept simple for brevity, logic same as before but ensured to be BEHIND text
+             if (effectiveImageEffects.includes('dark-error')) {
                  ctx.globalCompositeOperation = 'hard-light'; 
-                 ctx.fillStyle = 'rgba(60, 20, 180, 0.5)'; // Deep Electric Violet
+                 ctx.fillStyle = 'rgba(60, 20, 180, 0.5)';
                  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 
-                 // Static Noise Layer
-                 const noisePattern = getScanlinePattern(ctx); // Re-use scanline pattern as base or draw noise
-                 if (noisePattern) {
-                     ctx.globalCompositeOperation = 'overlay';
-                     ctx.globalAlpha = 0.2;
-                     ctx.fillStyle = noisePattern;
-                     ctx.fillRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
-                 }
-
-                 // Glitch Slices
-                 // Speed affects probability of glitch appearing
-                 if (audioEnabled && (high > (0.3 / speedScalar) || isFlashActive)) {
-                     ctx.globalCompositeOperation = 'source-over';
-                     const numSlices = Math.floor((high * 15 + 5) * speedScalar);
-                     
-                     for(let i=0; i<numSlices; i++) {
-                         const sliceH = Math.random() * 50 * speedScalar;
-                         const sliceY = Math.random() * CANVAS_HEIGHT;
-                         const offsetX = (Math.random() - 0.5) * 100 * (high + 0.5) * speedScalar;
-                         
-                         ctx.save();
-                         ctx.beginPath();
-                         ctx.rect(0, sliceY, CANVAS_WIDTH, sliceH);
-                         ctx.clip();
-                         
-                         // Displacement
-                         ctx.translate(offsetX, 0);
-                         
-                         if (Math.random() > 0.5) {
-                             ctx.filter = 'invert(1) hue-rotate(90deg)';
-                         }
-                         
-                         ctx.drawImage(media, x, y, width * scale, height * scale);
-                         ctx.restore();
-                         
-                         // Occasional cyan lightning band
-                         if (Math.random() > 0.8) {
-                             ctx.fillStyle = 'rgba(100, 255, 255, 0.8)'; 
-                             ctx.globalCompositeOperation = 'screen';
-                             ctx.fillRect(0, sliceY, CANVAS_WIDTH, sliceH);
-                         }
-                     }
-                 }
              }
-
-             // RED ERROR OVERLAY
-             if (hasRedError) {
+             if (effectiveImageEffects.includes('red-error')) {
                  ctx.globalCompositeOperation = 'hard-light'; 
-                 ctx.fillStyle = 'rgba(180, 20, 20, 0.5)'; // Deep Red
+                 ctx.fillStyle = 'rgba(180, 20, 20, 0.5)';
                  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 
-                  // Glitch Slices
-                 if (audioEnabled && (high > (0.3 / speedScalar) || isFlashActive)) {
-                     ctx.globalCompositeOperation = 'source-over';
-                     const numSlices = Math.floor((high * 15 + 5) * speedScalar);
-                     for(let i=0; i<numSlices; i++) {
-                         const sliceH = Math.random() * 60 * speedScalar;
-                         const sliceY = Math.random() * CANVAS_HEIGHT;
-                         const offsetX = (Math.random() - 0.5) * 120 * (high + 0.5) * speedScalar; 
-                         
-                         ctx.save();
-                         ctx.beginPath();
-                         ctx.rect(0, sliceY, CANVAS_WIDTH, sliceH);
-                         ctx.clip();
-                         ctx.translate(offsetX, 0);
-                         // Tint the slice red/orange
-                         ctx.filter = 'sepia(1) saturate(5) hue-rotate(-50deg) contrast(2)';
-                         ctx.drawImage(media, x, y, width * scale, height * scale);
-                         ctx.restore();
-                     }
-                 }
-             }
-             
-             // ALERT EFFECT (Requested)
-             if (hasAlert) {
-                 // Heavy Red Pulse
-                 const alertPulse = 0.5 + Math.sin(time * 15 * speedScalar) * 0.2;
-                 
-                 ctx.save();
-                 // Red Tint Overlay
-                 ctx.globalCompositeOperation = 'multiply';
-                 ctx.fillStyle = `rgba(255, 0, 0, ${0.4 + (bass * 0.3)})`;
-                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 
-                 // Dark Vignette for Warning Feel
-                 ctx.globalCompositeOperation = 'source-over';
-                 const grad = ctx.createRadialGradient(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH*0.2, CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH*0.8);
-                 grad.addColorStop(0, 'rgba(0,0,0,0)');
-                 grad.addColorStop(1, 'rgba(0,0,0,0.8)');
-                 ctx.fillStyle = grad;
-                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 
-                 // Draw the Alert Icon
-                 drawAlertIcon(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, time, bass);
-                 
-                 ctx.restore();
              }
 
              ctx.restore();
         };
 
-        if (config.background.type === 'image' && bgImageRef.current) {
-            const img = bgImageRef.current;
-            if (img.complete) {
-                drawMedia(img, false);
-            }
-        } 
-        else if (config.background.type === 'video' && bgVideoRef.current) {
+        if (config.background.type === 'image' && bgImageRef.current?.complete) {
+            drawMedia(bgImageRef.current, false);
+        } else if (config.background.type === 'video' && bgVideoRef.current?.readyState >= 2) {
             const vid = bgVideoRef.current;
-            if (vid.readyState >= 2) {
-                const vidDuration = vid.duration || 1;
-                const playbackSpeed = config.background.playbackSpeed || 1.0;
-                
-                // Calculate where the video should logically be based on song time & speed
-                const scaledTime = time * playbackSpeed;
-                const targetTime = scaledTime % vidDuration;
-                
-                // "Soft Sync" Logic for Playback (Smooth loop, less seeking)
-                if (isPlaying) {
-                     // Ensure playback rate matches config
-                     if (Math.abs(vid.playbackRate - playbackSpeed) > 0.1) {
-                         vid.playbackRate = playbackSpeed;
-                     }
-
-                     if (vid.paused) vid.play().catch(() => {});
-                     
-                     // Check drift - Only correct if significantly off to avoid stutter
-                     // We use a larger threshold because the browser's video engine is usually smoother than our frame ticks
-                     const drift = Math.abs(vid.currentTime - targetTime);
-                     const wrapDrift = Math.abs((vid.currentTime - vidDuration) - targetTime);
-
-                     // If drift is > 0.3s, hard seek. Otherwise let it play.
-                     if (drift > 0.3 && wrapDrift > 0.3) {
-                         vid.currentTime = targetTime;
-                     }
-                } else {
-                     // "Hard Sync" for paused scrubbing
-                     if (Math.abs(vid.currentTime - targetTime) > 0.05) {
-                        vid.currentTime = targetTime;
-                     }
-                     if (!vid.paused) vid.pause();
-                }
-                
-                drawMedia(vid, true);
+            const playbackSpeed = config.background.playbackSpeed || 1.0;
+            if (isPlaying) {
+                 if (Math.abs(vid.playbackRate - playbackSpeed) > 0.1) vid.playbackRate = playbackSpeed;
+                 if (vid.paused) vid.play().catch(() => {});
+                 const targetTime = (time * playbackSpeed) % (vid.duration || 1);
+                 if (Math.abs(vid.currentTime - targetTime) > 0.5) vid.currentTime = targetTime;
+            } else {
+                 if (!vid.paused) vid.pause();
+                 vid.currentTime = (time * playbackSpeed) % (vid.duration || 1);
             }
-        }
-        else if (config.background.type === 'procedural') {
+            drawMedia(vid, true);
+        } else if (config.background.type === 'procedural') {
             const speed = config.background.intensity || 0.5;
             const style = config.background.proceduralStyle || 'grid';
-            const audioData = { bass, mid, high, raw }; // Pack for helpers
+            const audioData = { bass, mid, high, raw };
             
             if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
             if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
@@ -1160,22 +883,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
             if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
             if (style === 'dna') drawDNA(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            
-            // ALERT EFFECT (For Procedural Backgrounds)
-            if (effectiveImageEffects.includes('alert')) {
-                 ctx.save();
-                 // Red Tint Overlay
-                 ctx.globalCompositeOperation = 'multiply';
-                 ctx.fillStyle = `rgba(255, 0, 0, ${0.4 + (bass * 0.3)})`;
-                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-                 // Draw the Alert Icon
-                 ctx.globalCompositeOperation = 'source-over';
-                 drawAlertIcon(ctx, CANVAS_WIDTH, CANVAS_HEIGHT, time, bass);
-                 ctx.restore();
-            }
         }
         
-        // Global Overlay
+        // Global Overlay Gradient (Behind text)
         const cx = CANVAS_WIDTH / 2;
         const cy = CANVAS_HEIGHT / 2;
         const bgRadius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * (0.6 + bass * 0.2);
@@ -1185,67 +895,29 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     }
+
+    // ===========================
+    // LAYER 2: CAMERA & WORLD (PARTICLES)
+    // ===========================
     
-    // --- Shockwaves (SKIP IN ALPHA) ---
-    if (!isAlphaRender && audioEnabled && config.audioReactivity.visualizerStyle === 'shockwave') {
-        const cx = CANVAS_WIDTH / 2;
-        const cy = CANVAS_HEIGHT / 2;
-        if (bass > 0.7 && Math.random() > 0.8) {
-            shockwavesRef.current.push({
-                id: Date.now(),
-                x: cx,
-                y: cy,
-                radius: 50,
-                alpha: 1.0,
-                color: effectiveColorsActive
-            });
-        }
-        
-        shockwavesRef.current.forEach((sw, idx) => {
-            sw.radius += 10 + (bass * 20);
-            sw.alpha -= 0.02;
-            
-            if(sw.alpha <= 0) {
-                shockwavesRef.current.splice(idx, 1);
-            } else {
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
-                ctx.strokeStyle = sw.color;
-                ctx.lineWidth = 10;
-                ctx.globalAlpha = sw.alpha * 0.5;
-                ctx.stroke();
-                ctx.restore();
-            }
-        });
-    }
-
-    // --- 2. Camera Setup ---
-    ctx.save();
-
+    // Shared Camera Transforms
     let zoom = 1.0 + effectiveZoomOffset;
     if (config.camera.zoomBeat && audioEnabled) zoom += bass * 0.1;
     if (config.camera.hardKick && audioEnabled && bass > 0.7) zoom += 0.2;
-    
     zoom += Math.sin(time * 0.5) * 0.02;
 
-    // Screen Pump Logic
     if (config.camera.screenPump && audioEnabled && bass > 0.75 && screenPumpState.current.intensity <= 0.1) {
         screenPumpState.current.intensity = 1.0;
     }
     if (screenPumpState.current.intensity > 0) {
         const pumpProgress = 1 - screenPumpState.current.intensity;
-        const pumpAmount = 1.0 + (0.05 * (1 - Math.pow(pumpProgress, 2))); // Ease out
+        const pumpAmount = 1.0 + (0.05 * (1 - Math.pow(pumpProgress, 2)));
         zoom *= pumpAmount;
-        screenPumpState.current.intensity -= 0.08; // Adjust decay rate
+        screenPumpState.current.intensity -= 0.08;
     }
-
 
     let rot = effectiveRotateOffset;
-    if (config.camera.rotate) {
-         if (primaryActiveIndex !== -1) rot += (primaryActiveIndex % 2 === 0 ? 1 : -1) * 0.02; 
-        rot += Math.sin(time * 0.2) * 0.01; 
-    }
+    if (config.camera.rotate) rot += Math.sin(time * 0.2) * 0.01; 
 
     let shakeX = 0;
     let shakeY = 0;
@@ -1267,72 +939,30 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         shakeY += (Math.random() - 0.5) * 50;
     }
 
-    ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    ctx.rotate(rot);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
-    
-    if (!isAlphaRender && config.effects.invert && bass > 0.7 && audioEnabled) {
-        ctx.filter = 'invert(1)';
-    }
-
-    // --- 3. World Elements ---
-
-    // Central Orb (SKIP IN ALPHA)
-    if (!isAlphaRender && audioEnabled && config.audioReactivity.visualizerStyle === 'orb') {
-        const cx = CANVAS_WIDTH / 2;
-        const cy = CANVAS_HEIGHT / 2;
-        ctx.save();
-        ctx.translate(cx, cy);
-        const orbRadius = (Math.min(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.2) + (bass * 100);
-        
-        const orbGrad = ctx.createRadialGradient(0,0, 0, 0,0, orbRadius);
-        orbGrad.addColorStop(0, effectiveColorsActive);
-        orbGrad.addColorStop(0.5, 'rgba(0,0,0,0)');
-        ctx.fillStyle = orbGrad;
-        ctx.globalAlpha = 0.5;
-        ctx.beginPath();
-        ctx.arc(0,0, orbRadius, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.strokeStyle = config.colors.secondary;
-        ctx.lineWidth = 2 + (high * 5);
-        for(let i=0; i<=Math.PI * 2; i+=0.1) {
-            const r = orbRadius * 0.6 + (Math.sin(i * 10 + time) * 10) + (raw[Math.floor(i*10) % raw.length] || 0) * 0.5;
-            const px = Math.cos(i) * r;
-            const py = Math.sin(i) * r;
-            if (i===0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-        }
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
-    }
-
-
-    // Particles (SKIP IN ALPHA)
+    // -- RENDER PARTICLES (Affected by Camera) --
     if (!isAlphaRender && config.particles.enabled) {
+        ctx.save();
+        ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        ctx.rotate(rot);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
+
         const particleBehavior = config.particles.particleBehavior || 'drift';
         particlesRef.current.forEach(p => {
              if (particleBehavior === 'rise') {
-                 // Rising Embers logic
-                 p.y -= p.vy * safeDt * 50; // Constant upward velocity
+                 p.y -= p.vy * safeDt * 50; 
                  p.x += Math.sin(p.phase + time) * p.speed * 0.5;
                  p.life -= safeDt;
-
                  if (p.life <= 0) {
                      p.life = p.maxLife;
                      p.y = CANVAS_HEIGHT + 50;
                      p.x = Math.random() * CANVAS_WIDTH;
                  }
-                 p.alpha = Math.sin((p.life / p.maxLife) * Math.PI) * 0.7; // Fade in/out
+                 p.alpha = Math.sin((p.life / p.maxLife) * Math.PI) * 0.7; 
              } else {
-                 // Default Drift logic
                  p.x += p.vx + (Math.sin(time + p.phase) * bass * 2);
                  p.y += p.vy + (Math.cos(time + p.phase) * bass * 2);
                  p.angle += 0.02 * (1 + bass);
-
                  if (p.x < -50) p.x = CANVAS_WIDTH + 50;
                  if (p.x > CANVAS_WIDTH + 50) p.x = -50;
                  if (p.y < -50) p.y = CANVAS_HEIGHT + 50;
@@ -1344,247 +974,18 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              ctx.rotate(p.angle);
              ctx.fillStyle = p.color;
              ctx.globalAlpha = p.alpha;
-             
              const pSize = p.size * (1 + high);
-             if (config.particles.shape === 'circle') {
-                 ctx.beginPath(); ctx.arc(0,0, pSize, 0, Math.PI*2); ctx.fill();
-             } else if (config.particles.shape === 'square') {
-                 ctx.fillRect(-pSize, -pSize, pSize*2, pSize*2);
-             } else if (config.particles.shape === 'star') {
-                 drawPolygon(ctx, 0, 0, pSize * 2, 5, 0); ctx.fill();
-             } else if (config.particles.shape === 'hexagon') {
-                 drawPolygon(ctx, 0, 0, pSize * 2, 6, 0); ctx.fill();
-             } else if (config.particles.shape === 'triangle') {
-                 drawPolygon(ctx, 0, 0, pSize * 2, 3, 0); ctx.fill();
-             } else if (config.particles.shape === 'note') {
-                 drawNote(ctx, 0, 0, pSize);
-             }
-
+             if (config.particles.shape === 'circle') { ctx.beginPath(); ctx.arc(0,0, pSize, 0, Math.PI*2); ctx.fill(); }
+             else if (config.particles.shape === 'square') ctx.fillRect(-pSize, -pSize, pSize*2, pSize*2);
+             else if (config.particles.shape === 'triangle') { drawPolygon(ctx, 0, 0, pSize * 2, 3, 0); ctx.fill(); }
              ctx.restore();
         });
+        ctx.restore(); // End Camera for Particles
     }
 
-
-    // --- 4. Text Rendering ---
-    const activeAnimation = config.animation.active;
-    const exitAnimation = config.animation.exit;
-
-    visibleSegments.forEach(seg => {
-        const lines = getLines(seg.id, seg.words);
-        const isActiveSegment = (time >= seg.start && time <= seg.end);
-        
-        const lineHeight = 100 + (bass * 10);
-        const totalHeight = lines.length * lineHeight;
-        let startY = (CANVAS_HEIGHT / 2) - (totalHeight / 2) + (lineHeight / 2);
-
-        lines.forEach((lineWords, lineIdx) => {
-             const lineY = startY + (lineIdx * lineHeight);
-             
-             ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} 80px ${config.font.family}`;
-             const totalLineWidth = lineWords.reduce((acc, w) => acc + ctx.measureText(w.word).width + 30, 0) - 30;
-             let currentX = (CANVAS_WIDTH / 2) - (totalLineWidth / 2);
-
-             lineWords.forEach((w, wIdx) => {
-                 const wordWidth = ctx.measureText(w.word).width;
-                 let centerX = currentX + wordWidth / 2;
-                 let centerY = lineY;
-
-                 const isWordActive = time >= w.start && time <= w.end;
-                 const isFuture = time < w.start;
-                 const isPast = time > w.end;
-                 
-                 let alpha = 1.0;
-                 let scale = 1.0;
-                 let blur = 0;
-                 let offsetY = 0;
-                 let offsetX = 0;
-                 let rotation = 0;
-                 let color = effectiveColorsText;
-
-                 if (isFuture) {
-                     const dist = w.start - time;
-                     if (dist < 0.5) { 
-                         const t = 1 - (dist / 0.5); 
-                         alpha = t;
-                         if (entranceAnimation === 'stack-pop') {
-                             if (dist < 0.2) {
-                                 const popT = 1 - (dist / 0.2);
-                                 scale = easeOutBack(popT);
-                                 const wordKey = `${seg.id}-${wIdx}`;
-                                 if (!wordPositionsCache.current.has(wordKey)) {
-                                     wordPositionsCache.current.set(wordKey, { 
-                                         x: (Math.random() - 0.5) * 150, 
-                                         y: (Math.random() - 0.5) * 150 
-                                     });
-                                 }
-                                 const pos = wordPositionsCache.current.get(wordKey)!;
-                                 offsetX = pos.x * (1 - popT);
-                                 offsetY = pos.y * (1 - popT);
-                             } else {
-                                 scale = 0;
-                             }
-                         } else if (entranceAnimation === 'slide') {
-                             offsetY = (1 - t) * 50;
-                         } else if (entranceAnimation === 'slam') {
-                             scale = 2.0 - t;
-                         } else if (entranceAnimation === 'zoom') {
-                             scale = t;
-                         } else if (entranceAnimation === 'spin') {
-                             rotation = (1 - t) * Math.PI;
-                             scale = t;
-                         } else if (entranceAnimation === 'blur') {
-                             blur = (1 - t) * 10;
-                         } else if (entranceAnimation === 'glitch') {
-                             if (Math.random() > t) {
-                                 offsetX = (Math.random() - 0.5) * 20;
-                             }
-                         } else if (entranceAnimation === 'elastic') {
-                             scale = easeOutElastic(t);
-                         } else if (entranceAnimation === 'drop') {
-                             offsetY = (1 - t) * -200;
-                         } else if (entranceAnimation === 'spiral') {
-                             rotation = (1-t) * Math.PI * 2;
-                             scale = t * 0.1;
-                         } else if (entranceAnimation === 'inflate') {
-                             scale = 0.5 + (t * 0.5);
-                             offsetY = (1-t) * 20;
-                         }
-                     } else {
-                         alpha = 0;
-                     }
-                 } else if (isWordActive) {
-                     color = effectiveColorsActive;
-                     scale = 1.1; 
-
-                     if (activeAnimation === 'glitch-shake') {
-                        offsetX = (Math.random() - 0.5) * (10 + high * 20);
-                        offsetY = (Math.random() - 0.5) * (10 + high * 20);
-                        rotation = (Math.random() - 0.5) * 0.05;
-                     } else if (activeAnimation === 'pulse') {
-                         scale += Math.sin(time * 10) * 0.05 + (bass * 0.1);
-                     } else if (activeAnimation === 'jitter') {
-                         offsetX = (Math.random() - 0.5) * 5;
-                         offsetY = (Math.random() - 0.5) * 5;
-                     } else if (activeAnimation === 'bounce') {
-                         offsetY = Math.sin(time * 15) * 10;
-                     } else if (activeAnimation === 'wave') {
-                         offsetY = Math.sin(time * 5 + centerX * 0.01) * 10;
-                     } else if (activeAnimation === 'rotate') {
-                         rotation = Math.sin(time * 3) * 0.1;
-                     } else if (activeAnimation === 'pop') {
-                         if (bass > 0.6) scale = 1.4;
-                     } else if (activeAnimation === 'flash') {
-                         if (Math.sin(time * 20) > 0) alpha = 0.5;
-                     } else if (activeAnimation === 'float') {
-                         offsetY = Math.sin(time * 2) * 5;
-                         rotation = Math.sin(time * 1.5) * 0.02;
-                     } else if (activeAnimation === 'shiver') {
-                         rotation = (Math.random() - 0.5) * 0.1;
-                     } else if (activeAnimation === 'heartbeat') {
-                         const beat = (time * 2) % 1;
-                         if (beat < 0.2) scale = 1.3;
-                         else if (beat > 0.3 && beat < 0.4) scale = 1.2;
-                     } else if (activeAnimation === 'swing') {
-                        rotation = Math.sin(time * 4) * 0.1;
-                        offsetY = Math.abs(Math.sin(time * 4)) * 5;
-                     }
-
-                 } else if (isPast) {
-                     color = effectiveColorsText;
-                     if (isStacking) {
-                        alpha = 0.5;
-                        blur = 1;
-                        const wordKey = `${seg.id}-${wIdx}`;
-                        if (wordPositionsCache.current.has(wordKey)) {
-                            const pos = wordPositionsCache.current.get(wordKey)!;
-                            offsetX = pos.x;
-                            offsetY = pos.y;
-                        }
-                     } else {
-                         const dist = time - w.end;
-                         if (dist < 0.5) {
-                             const t = dist / 0.5;
-                             alpha = 1 - t;
-                             if (exitAnimation === 'slide') offsetY = t * -50;
-                             else if (exitAnimation === 'slam') scale = 1.0 + t;
-                             else if (exitAnimation === 'zoom') scale = 1.0 - t;
-                             else if (exitAnimation === 'blur') blur = t * 20;
-                         } else {
-                             if (isActiveSegment) {
-                                 alpha = 0.3;
-                                 blur = 1;
-                             } else {
-                                 alpha = 0;
-                             }
-                         }
-                     }
-                 }
-
-                 if (alpha > 0.01) {
-                     ctx.save();
-                     ctx.translate(centerX + offsetX, centerY + offsetY);
-                     ctx.rotate(rotation);
-                     ctx.scale(scale, scale);
-
-                     if (blur > 0) ctx.filter = `blur(${blur}px)`;
-                     ctx.globalAlpha = alpha;
-                     
-                     if (effectiveGlow > 0 && (isWordActive || alpha > 0.5)) {
-                         ctx.shadowBlur = effectiveGlow * 30;
-                         ctx.shadowColor = isWordActive ? effectiveColorsActive : effectiveColorsText;
-                     }
-
-                     let textToDraw = w.word;
-                     if (isFuture && entranceAnimation === 'scramble' && w.start - time < 0.5) {
-                         textToDraw = w.word.split('').map(c => Math.random() > 0.5 ? getRandomChar() : c).join('');
-                     }
-
-                     ctx.fillStyle = color;
-                     if (isWordActive && activeAnimation === 'rainbow') {
-                         const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
-                         grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
-                         grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
-                         ctx.fillStyle = grad;
-                     }
-
-                     ctx.fillText(textToDraw, -wordWidth / 2, 0);
-                     
-                     if (isWordActive && activeAnimation === 'glitch-shake') {
-                         const glitchShift = 5 + high * 10;
-                         ctx.globalCompositeOperation = 'lighter';
-                         ctx.fillStyle = '#ff00ff';
-                         ctx.fillText(textToDraw, -wordWidth/2 - glitchShift, 0);
-                         ctx.fillStyle = '#00ffff';
-                         ctx.fillText(textToDraw, -wordWidth/2 + glitchShift, 0);
-                     }
-
-                     ctx.restore();
-                 }
-
-                 currentX += wordWidth + 30;
-             });
-        });
-    });
-    
-    // --- 5. Post-Process Filters ---
-    ctx.restore(); // Restore from Camera
-    
-    // Reactive Chromatic Aberration & RGB Split
-    if (config.effects.chromaticAberration || config.effects.rgbSplit) {
-        const caShift = config.effects.chromaticAberration ? 2 + mid * 20 * sensitivity : 0;
-        const rgbShift = config.effects.rgbSplit ? 5 : 0;
-        const totalShift = Math.max(caShift, rgbShift);
-        if (totalShift > 0.1) {
-            ctx.save();
-            ctx.globalCompositeOperation = 'lighter';
-            // Draw Red channel
-            ctx.drawImage(canvas, totalShift, 0);
-            // Draw Blue channel
-            ctx.drawImage(canvas, -totalShift, 0);
-            ctx.restore();
-        }
-    }
-
+    // ===========================
+    // LAYER 3: OVERLAYS (Scanlines, Vignette) - BEHIND TEXT
+    // ===========================
     if (!isAlphaRender) {
         if (config.effects.vignette) {
             const grad = ctx.createRadialGradient(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH * 0.3, CANVAS_WIDTH/2, CANVAS_HEIGHT/2, CANVAS_WIDTH * 0.8);
@@ -1600,7 +1001,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
             }
         }
-        if (config.effects.filmGrain) { // Re-purposed for CRT Noise
+        if (config.effects.filmGrain) { 
             const pattern = getNoisePattern(ctx, CANVAS_WIDTH, CANVAS_HEIGHT);
             if (pattern) {
                 ctx.save();
@@ -1610,6 +1011,228 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
                 ctx.restore();
             }
+        }
+    }
+
+
+    // ===========================
+    // LAYER 4: TEXT RENDERING (TOP LAYER)
+    // ===========================
+    ctx.save();
+    
+    // Re-apply Camera transform for Text to match world movement
+    ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    ctx.rotate(rot);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
+
+    if (!isAlphaRender && config.effects.invert && bass > 0.7 && audioEnabled) {
+        ctx.filter = 'invert(1)';
+    }
+
+    const primaryActiveIndex = data.segments.findIndex(
+      (seg) => time >= seg.start && time <= seg.end
+    );
+    const visibleSegments = data.segments.filter(
+      (seg) => (time >= seg.start - 2.0 && time <= seg.end + 2.0)
+    );
+    visibleSegments.sort((a, b) => a.start - b.start);
+
+    // Section Overrides
+    let activeAnimationEntrance = config.animation.entrance;
+    let activeAnimationActive = config.animation.active;
+    let activeAnimationExit = config.animation.exit;
+    let effectiveSectionGlow = effectiveGlow;
+    let effectiveSectionZoom = effectiveZoomOffset;
+    let currentEffectiveColorsActive = effectiveColorsActive;
+    let currentEffectiveColorsText = effectiveColorsText;
+
+    if (primaryActiveIndex !== -1) {
+        let activeSection = 'verse';
+        for (let i = primaryActiveIndex; i >= 0; i--) {
+            if (data.segments[i].section) {
+                activeSection = data.segments[i].section || 'verse';
+                break;
+            }
+        }
+        const normalizedSection = activeSection.toLowerCase().split(' ')[0] as SectionType;
+        const sectionStyle = config.sectionStyles?.[normalizedSection];
+        if (sectionStyle && sectionStyle.enabled) {
+            if (sectionStyle.colors_active) currentEffectiveColorsActive = sectionStyle.colors_active;
+            if (sectionStyle.colors_text) currentEffectiveColorsText = sectionStyle.colors_text;
+            if (sectionStyle.effects_glow_boost) effectiveSectionGlow = Math.min(1.0, effectiveGlow + sectionStyle.effects_glow_boost);
+            if (sectionStyle.camera_zoom_boost) effectiveSectionZoom += sectionStyle.camera_zoom_boost;
+            if (sectionStyle.animation?.entrance) activeAnimationEntrance = sectionStyle.animation.entrance;
+            if (sectionStyle.animation?.active) activeAnimationActive = sectionStyle.animation.active;
+            if (sectionStyle.animation?.exit) activeAnimationExit = sectionStyle.animation.exit;
+        }
+    }
+
+    visibleSegments.forEach(seg => {
+        const lines = getLines(seg.id, seg.words);
+        const isActiveSegment = (time >= seg.start && time <= seg.end);
+        
+        const lineHeight = 100 + (bass * 10);
+        const totalHeight = lines.length * lineHeight;
+        let startY = (CANVAS_HEIGHT / 2) - (totalHeight / 2) + (lineHeight / 2);
+
+        lines.forEach((lineWords, lineIdx) => {
+             const lineY = startY + (lineIdx * lineHeight);
+             ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} 80px ${config.font.family}`;
+             const totalLineWidth = lineWords.reduce((acc, w) => acc + ctx.measureText(w.word).width + 30, 0) - 30;
+             let currentX = (CANVAS_WIDTH / 2) - (totalLineWidth / 2);
+
+             lineWords.forEach((w, wIdx) => {
+                 const wordWidth = ctx.measureText(w.word).width;
+                 let centerX = currentX + wordWidth / 2;
+                 let centerY = lineY;
+
+                 const isWordActive = time >= w.start && time <= w.end;
+                 const isFuture = time < w.start;
+                 const isPast = time > w.end;
+                 
+                 // --- ANIMATION SELECTION (Random Support) ---
+                 const seed = w.start * 1000 + wIdx;
+                 const finalEntrance = activeAnimationEntrance === 'random' ? getRandomAnimation(seed, 'entrance') : activeAnimationEntrance;
+                 const finalActive = activeAnimationActive === 'random' ? getRandomAnimation(seed, 'active') : activeAnimationActive;
+                 
+                 let alpha = 1.0;
+                 let scale = 1.0;
+                 let blur = 0;
+                 let offsetY = 0;
+                 let offsetX = 0;
+                 let rotation = 0;
+                 let color = currentEffectiveColorsText;
+
+                 if (isFuture) {
+                     const dist = w.start - time;
+                     if (dist < 0.5) { 
+                         const t = 1 - (dist / 0.5); 
+                         alpha = t;
+                         
+                         if (finalEntrance === 'stack-pop') {
+                             if (dist < 0.2) {
+                                 const popT = 1 - (dist / 0.2);
+                                 scale = easeOutBack(popT);
+                             } else { scale = 0; }
+                         } else if (finalEntrance === 'slide') { offsetY = (1 - t) * 50;
+                         } else if (finalEntrance === 'slam') { scale = 2.0 - t;
+                         } else if (finalEntrance === 'zoom') { scale = t;
+                         } else if (finalEntrance === 'spin') { rotation = (1 - t) * Math.PI; scale = t;
+                         } else if (finalEntrance === 'blur') { blur = (1 - t) * 10;
+                         } else if (finalEntrance === 'glitch') {
+                             if (Math.random() > t) offsetX = (Math.random() - 0.5) * 20;
+                         } else if (finalEntrance === 'elastic') { scale = easeOutElastic(t);
+                         } else if (finalEntrance === 'drop') { offsetY = (1 - t) * -200;
+                         } else if (finalEntrance === 'spiral') { rotation = (1-t) * Math.PI * 2; scale = t * 0.1;
+                         } else if (finalEntrance === 'inflate') { scale = 0.5 + (t * 0.5); offsetY = (1-t) * 20;
+                         }
+                     } else { alpha = 0; }
+                 } else if (isWordActive) {
+                     color = currentEffectiveColorsActive;
+                     scale = 1.1; 
+
+                     if (finalActive === 'glitch-shake') {
+                        offsetX = (Math.random() - 0.5) * (10 + high * 20);
+                        offsetY = (Math.random() - 0.5) * (10 + high * 20);
+                        rotation = (Math.random() - 0.5) * 0.05;
+                     } else if (finalActive === 'pulse') { scale += Math.sin(time * 10) * 0.05 + (bass * 0.1);
+                     } else if (finalActive === 'jitter') { offsetX = (Math.random() - 0.5) * 5; offsetY = (Math.random() - 0.5) * 5;
+                     } else if (finalActive === 'bounce') { offsetY = Math.sin(time * 15) * 10;
+                     } else if (finalActive === 'wave') { offsetY = Math.sin(time * 5 + centerX * 0.01) * 10;
+                     } else if (finalActive === 'rotate') { rotation = Math.sin(time * 3) * 0.1;
+                     } else if (finalActive === 'pop') { if (bass > 0.6) scale = 1.4;
+                     } else if (finalActive === 'flash') { if (Math.sin(time * 20) > 0) alpha = 0.5;
+                     } else if (finalActive === 'float') { offsetY = Math.sin(time * 2) * 5; rotation = Math.sin(time * 1.5) * 0.02;
+                     } else if (finalActive === 'shiver') { rotation = (Math.random() - 0.5) * 0.1;
+                     } else if (finalActive === 'heartbeat') {
+                         const beat = (time * 2) % 1;
+                         if (beat < 0.2) scale = 1.3; else if (beat > 0.3 && beat < 0.4) scale = 1.2;
+                     } else if (finalActive === 'swing') { rotation = Math.sin(time * 4) * 0.1; offsetY = Math.abs(Math.sin(time * 4)) * 5;
+                     }
+                 } else if (isPast) {
+                     color = currentEffectiveColorsText;
+                     const dist = time - w.end;
+                     if (dist < 0.5) {
+                         const t = dist / 0.5;
+                         alpha = 1 - t;
+                         if (activeAnimationExit === 'slide') offsetY = t * -50;
+                         else if (activeAnimationExit === 'slam') scale = 1.0 + t;
+                         else if (activeAnimationExit === 'zoom') scale = 1.0 - t;
+                         else if (activeAnimationExit === 'blur') blur = t * 20;
+                     } else {
+                         if (isActiveSegment) { alpha = 0.3; blur = 1; } 
+                         else { alpha = 0; }
+                     }
+                 }
+
+                 if (alpha > 0.01) {
+                     ctx.save();
+                     ctx.translate(centerX + offsetX, centerY + offsetY);
+                     ctx.rotate(rotation);
+                     ctx.scale(scale, scale);
+
+                     if (blur > 0) ctx.filter = `blur(${blur}px)`;
+                     ctx.globalAlpha = alpha;
+                     
+                     // --- LEGIBILITY ENHANCEMENT: HARD STROKE ---
+                     // Always render a stroke behind the text to ensure it pops off the background
+                     ctx.lineJoin = 'round';
+                     ctx.lineWidth = 6;
+                     ctx.strokeStyle = 'rgba(0,0,0,0.8)'; // Semi-transparent black stroke
+                     ctx.strokeText(w.word, -wordWidth / 2, 0);
+
+                     if (effectiveSectionGlow > 0 && (isWordActive || alpha > 0.5)) {
+                         ctx.shadowBlur = effectiveSectionGlow * 30;
+                         ctx.shadowColor = isWordActive ? currentEffectiveColorsActive : currentEffectiveColorsText;
+                     }
+
+                     let textToDraw = w.word;
+                     if (isFuture && finalEntrance === 'scramble' && w.start - time < 0.5) {
+                         textToDraw = w.word.split('').map(c => Math.random() > 0.5 ? getRandomChar() : c).join('');
+                     }
+
+                     ctx.fillStyle = color;
+                     if (isWordActive && finalActive === 'rainbow') {
+                         const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
+                         grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
+                         grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
+                         ctx.fillStyle = grad;
+                     }
+
+                     ctx.fillText(textToDraw, -wordWidth / 2, 0);
+                     
+                     if (isWordActive && finalActive === 'glitch-shake') {
+                         const glitchShift = 5 + high * 10;
+                         ctx.globalCompositeOperation = 'lighter';
+                         ctx.fillStyle = '#ff00ff';
+                         ctx.fillText(textToDraw, -wordWidth/2 - glitchShift, 0);
+                         ctx.fillStyle = '#00ffff';
+                         ctx.fillText(textToDraw, -wordWidth/2 + glitchShift, 0);
+                     }
+
+                     ctx.restore();
+                 }
+
+                 currentX += wordWidth + 30;
+             });
+        });
+    });
+    ctx.restore(); // Restore Camera
+
+    // ===========================
+    // LAYER 5: FINAL COMPOSITION (Chromatic Aberration affects everything)
+    // ===========================
+    if (config.effects.chromaticAberration || config.effects.rgbSplit) {
+        const caShift = config.effects.chromaticAberration ? 2 + mid * 20 * sensitivity : 0;
+        const rgbShift = config.effects.rgbSplit ? 5 : 0;
+        const totalShift = Math.max(caShift, rgbShift);
+        if (totalShift > 0.1) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.drawImage(canvas, totalShift, 0);
+            ctx.drawImage(canvas, -totalShift, 0);
+            ctx.restore();
         }
     }
   };

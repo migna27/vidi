@@ -1,3 +1,5 @@
+
+
 import React, { useState, useRef } from 'react';
 import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
@@ -643,7 +645,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         <SelectInput 
                                             label="Entrance" 
                                             value={style.animation?.entrance || config.animation.entrance} 
-                                            options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
+                                            options={['random', 'fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
                                             onChange={(v) => {
                                                 const currentAnim = style.animation || {};
                                                 updateSectionStyle(key, 'animation', { ...currentAnim, entrance: v });
@@ -652,7 +654,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         <SelectInput 
                                             label="Active" 
                                             value={style.animation?.active || config.animation.active} 
-                                            options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
+                                            options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
                                             onChange={(v) => {
                                                 const currentAnim = style.animation || {};
                                                 updateSectionStyle(key, 'animation', { ...currentAnim, active: v });
@@ -907,13 +909,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="In" 
                    value={config.animation.entrance} 
-                   options={['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
+                   options={['random', 'fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate', 'stretch', 'stack-pop']} 
                    onChange={(v) => updateNested('animation', 'entrance', v)} 
                 />
                 <SelectInput 
                    label="Active" 
                    value={config.animation.active} 
-                   options={['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
+                   options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
                    onChange={(v) => updateNested('animation', 'active', v)} 
                 />
                 <SelectInput 
