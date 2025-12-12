@@ -1,3 +1,5 @@
+
+
 import 'react';
 
 // Fix for missing JSX.IntrinsicElements types in environment
@@ -89,7 +91,7 @@ export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
 export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
-export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes';
+export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x';
 
 export interface KeyframeValues {
   colors_text?: string;

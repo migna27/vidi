@@ -797,35 +797,122 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              const hasZoom = effectiveImageEffects.includes('zoom-slow');
              const hasChromatic = effectiveImageEffects.includes('chromatic-shift');
              const hasVhsStripes = effectiveImageEffects.includes('vhs-stripes');
+             const hasLiquidWarp = effectiveImageEffects.includes('liquid-warp');
+             const hasScanDrift = effectiveImageEffects.includes('scan-drift');
+             const hasGhosting = effectiveImageEffects.includes('ghosting');
+             const hasMirrorX = effectiveImageEffects.includes('mirror-x');
+             const hasPixelNoise = effectiveImageEffects.includes('pixel-noise');
 
              if (hasZoom) scale *= 1.0 + (Math.sin(time * 0.2 * speedScalar) * 0.1); 
              if (audioEnabled && effectiveImageEffects.some(e => ['dark-error','red-error'].includes(e))) {
                  scale *= 1.0 + (bass * 0.15 * speedScalar); 
              }
 
+             // Recalculate Base Positions
              x = (CANVAS_WIDTH / 2) - (width / 2) * scale;
              y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
 
-             if (hasChromatic) {
-                 const shift = (Math.sin(time * speedScalar) * 10) + (bass * 20);
+             // --- EFFECT LOGIC ---
+             
+             if (hasMirrorX) {
+                 ctx.translate(CANVAS_WIDTH, 0);
+                 ctx.scale(-1, 1);
+                 // Need to flip texture draw logic if we flip context? 
+                 // Actually standard drawImage works, but we might want just half reflected?
+                 // Simple mirror: Flip whole context, draw, then restore. Result: Flipped image.
+                 // To do "Kaleidoscope-ish" mirror (left half mirrored to right), complex clipping needed.
+                 // For now, simple horizontal flip is active.
+             }
+
+             if (hasGhosting) {
                  ctx.save();
+                 ctx.globalAlpha = opacity * 0.5;
                  ctx.globalCompositeOperation = 'screen';
-                 ctx.globalAlpha = opacity * 0.7;
-                 ctx.translate(shift, 0);
-                 ctx.fillStyle = '#ff0000';
-                 ctx.drawImage(media, x, y, width * scale, height * scale);
-                 ctx.translate(-shift * 2, 0); 
-                 ctx.fillStyle = '#00ffff';
-                 ctx.drawImage(media, x, y, width * scale, height * scale);
-                 ctx.translate(shift, 0); 
-                 ctx.globalCompositeOperation = 'lighten';
-                 ctx.globalAlpha = opacity;
-                 ctx.drawImage(media, x, y, width * scale, height * scale);
+                 const ghostScale = scale * (1.05 + Math.sin(time * 2 * speedScalar) * 0.02);
+                 const gx = (CANVAS_WIDTH / 2) - (width / 2) * ghostScale;
+                 const gy = (CANVAS_HEIGHT / 2) - (height / 2) * ghostScale;
+                 ctx.drawImage(media, gx, gy, width * ghostScale, height * ghostScale);
                  ctx.restore();
+             }
+
+             if (hasLiquidWarp) {
+                 // Slicing approach for liquid effect
+                 const slices = 20; 
+                 const sliceH = height / slices;
+                 for (let i = 0; i < slices; i++) {
+                     const sy = i * sliceH;
+                     const dyOffset = Math.sin((i * 0.5) + (time * 2 * speedScalar)) * (50 + bass * 20);
+                     const dxOffset = Math.cos((i * 0.5) + (time * 1.5 * speedScalar)) * (20 + bass * 10);
+                     
+                     ctx.drawImage(
+                         media, 
+                         0, sy, width, sliceH, 
+                         x + dxOffset, y + (sy * scale) + dyOffset, width * scale, sliceH * scale
+                     );
+                 }
+             } else if (hasScanDrift) {
+                 // Scanline tearing
+                 const slices = 40;
+                 const sliceH = height / slices;
+                 for (let i = 0; i < slices; i++) {
+                     const sy = i * sliceH;
+                     let dxOffset = 0;
+                     // Random drift occasionally
+                     if (Math.random() > 0.9 - (bass * 0.2)) {
+                         dxOffset = (Math.random() - 0.5) * (100 * speedScalar);
+                     }
+                     // Wave drift
+                     dxOffset += Math.sin((i * 0.2) + (time * 5)) * 10;
+
+                     ctx.drawImage(
+                         media, 
+                         0, sy, width, sliceH, 
+                         x + dxOffset, y + (sy * scale), width * scale, sliceH * scale
+                     );
+                 }
              } else {
-                 ctx.drawImage(media, x, y, width * scale, height * scale);
+                 // Standard Draw (fallback or composed)
+                 if (hasChromatic) {
+                     const shift = (Math.sin(time * speedScalar) * 10) + (bass * 20);
+                     ctx.save();
+                     ctx.globalCompositeOperation = 'screen';
+                     ctx.globalAlpha = opacity * 0.7;
+                     ctx.translate(shift, 0);
+                     ctx.fillStyle = '#ff0000';
+                     ctx.drawImage(media, x, y, width * scale, height * scale);
+                     ctx.translate(-shift * 2, 0); 
+                     ctx.fillStyle = '#00ffff';
+                     ctx.drawImage(media, x, y, width * scale, height * scale);
+                     ctx.translate(shift, 0); 
+                     ctx.globalCompositeOperation = 'lighten';
+                     ctx.globalAlpha = opacity;
+                     ctx.drawImage(media, x, y, width * scale, height * scale);
+                     ctx.restore();
+                 } else {
+                     ctx.drawImage(media, x, y, width * scale, height * scale);
+                 }
              }
              
+             if (hasPixelNoise) {
+                 // RGB Noise only on top of image area
+                 const pattern = getNoisePattern(ctx, 100, 100);
+                 if (pattern) {
+                     ctx.save();
+                     ctx.globalCompositeOperation = 'overlay';
+                     ctx.globalAlpha = 0.15 + (high * 0.1);
+                     ctx.fillStyle = pattern;
+                     // Draw over entire canvas but masked? No, just rect for now over whole screen is standard
+                     // but let's constrain to image rect for better effect if not warping
+                     if (!hasLiquidWarp && !hasScanDrift) {
+                         ctx.translate(x, y);
+                         ctx.fillRect(0, 0, width * scale, height * scale);
+                     } else {
+                         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                     }
+                     ctx.restore();
+                 }
+             }
+
              if (hasVhsStripes) {
                  const numStripes = 5;
                  const stripeOffset = (time * 100 * speedScalar) % CANVAS_HEIGHT;
@@ -841,7 +928,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              }
              
              // --- ERROR OVERLAYS ---
-             // Kept simple for brevity, logic same as before but ensured to be BEHIND text
              if (effectiveImageEffects.includes('dark-error')) {
                  ctx.globalCompositeOperation = 'hard-light'; 
                  ctx.fillStyle = 'rgba(60, 20, 180, 0.5)';
@@ -923,9 +1009,14 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     let shakeX = 0;
     let shakeY = 0;
-    if (config.camera.shake && bass > 0.6 && audioEnabled) {
-        shakeX = (Math.random() - 0.5) * bass * 30;
-        shakeY = (Math.random() - 0.5) * bass * 30;
+    if (config.camera.shake && audioEnabled) {
+        // Dynamic shake based on audio intensity
+        // Remove hard threshold of 0.6 to allow subtler shakes at lower volumes
+        const shakeIntensity = (bass * 40) + (mid * 15); // Tuned for visibility
+        if (shakeIntensity > 1.0) {
+            shakeX = (Math.random() - 0.5) * shakeIntensity;
+            shakeY = (Math.random() - 0.5) * shakeIntensity;
+        }
     }
     
     if (config.camera.sway) {
