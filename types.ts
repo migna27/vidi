@@ -134,6 +134,7 @@ export interface AudioLayer {
 export interface RendererConfig {
   id: string;
   name: string;
+  showLyrics: boolean; // New: Global toggle for lyrics rendering
   resolutionId: string; // '16:9', '9:16', '1:1', '4:5'
   background: {
     type: BackgroundType;

@@ -126,8 +126,6 @@ export default function App() {
   const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
   const [exportMode, setExportMode] = useState<'normal' | 'alpha'>('normal');
 
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-
   // Caching / Instant Export State
   const [cachedBlob, setCachedBlob] = useState<Blob | null>(null);
   const [isCaching, setIsCaching] = useState(false);
@@ -181,54 +179,22 @@ export default function App() {
     }
   }, [data, rendererConfig, audioLayers]);
 
-  // Auto-Load Project
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('kinetic-flow-autosave');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.lyricData) setData(parsed.lyricData);
-        if (parsed.config) {
-             const loadedConfig = parsed.config;
-             // Handle expired blob URLs
-             if ((loadedConfig.background.type === 'image' || loadedConfig.background.type === 'video') && 
-                  loadedConfig.background.url?.startsWith('blob:')) {
-                  loadedConfig.background.type = 'solid';
-                  loadedConfig.background.url = undefined;
-             }
-             setRendererConfig(loadedConfig);
-        }
-        if (parsed.timestamp) setLastSaved(new Date(parsed.timestamp));
-      }
-    } catch (e) {
-      console.error("Autosave load failed", e);
-    }
-  }, []);
-
-  // Auto-Save Project
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const saveState = {
-        version: '1.0',
-        timestamp: Date.now(),
-        lyricData: data,
-        config: rendererConfig
-      };
-      localStorage.setItem('kinetic-flow-autosave', JSON.stringify(saveState));
-      setLastSaved(new Date());
-    }, 2000); // 2 second debounce
-
-    return () => clearTimeout(timer);
-  }, [data, rendererConfig]);
+  // -- AUTOSAVE REMOVED --
 
   const handleResetProject = () => {
-    if (confirm("Are you sure you want to reset the project? This will clear all changes.")) {
-       localStorage.removeItem('kinetic-flow-autosave');
+    if (confirm("Are you sure you want to reset the project to default values? All current changes will be lost.")) {
        setData(DEFAULT_LYRICS);
        setRendererConfig(TEMPLATES[0]);
        setAudioLayers([]);
-       setLastSaved(null);
        setCachedBlob(null);
+       
+       // Force stop any audio
+       if (audioContextRef.current) {
+           stopAllSources();
+           audioContextRef.current.suspend();
+           setIsPlaying(false);
+           setCurrentTime(0);
+       }
     }
   };
 
@@ -889,13 +855,6 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
-             {lastSaved && (
-                <div className="text-[10px] text-gray-500 mr-2 flex items-center gap-1 animate-in fade-in duration-500">
-                    <Check size={10} className="text-green-500"/>
-                    <span className="hidden md:inline">Saved {lastSaved.toLocaleTimeString()}</span>
-                </div>
-             )}
-
              <div className="flex items-center bg-neutral-800 rounded-md border border-white/5 mr-4">
                   <button 
                     onClick={handleResetProject}
@@ -989,6 +948,7 @@ export default function App() {
                  audioLayers={audioLayers}
                  onUpdateLayer={updateLayer}
                  onRemoveLayer={removeLayer}
+                 onResetProject={handleResetProject}
               />
           </div>
 

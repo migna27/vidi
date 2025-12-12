@@ -1,3 +1,5 @@
+
+
 import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
 import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect, AnimationStyle, ActiveStyle } from '../types';
 import { RESOLUTIONS } from '../constants';
@@ -1018,207 +1020,209 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // ===========================
     // LAYER 4: TEXT RENDERING (TOP LAYER)
     // ===========================
-    ctx.save();
+    if (config.showLyrics !== false) {
+      ctx.save();
     
-    // Re-apply Camera transform for Text to match world movement
-    ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    ctx.rotate(rot);
-    ctx.scale(zoom, zoom);
-    ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
+      // Re-apply Camera transform for Text to match world movement
+      ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+      ctx.rotate(rot);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-CANVAS_WIDTH / 2 - shakeX, -CANVAS_HEIGHT / 2 - shakeY);
 
-    if (!isAlphaRender && config.effects.invert && bass > 0.7 && audioEnabled) {
-        ctx.filter = 'invert(1)';
+      if (!isAlphaRender && config.effects.invert && bass > 0.7 && audioEnabled) {
+          ctx.filter = 'invert(1)';
+      }
+
+      const primaryActiveIndex = data.segments.findIndex(
+        (seg) => time >= seg.start && time <= seg.end
+      );
+      const visibleSegments = data.segments.filter(
+        (seg) => (time >= seg.start - 2.0 && time <= seg.end + 2.0)
+      );
+      visibleSegments.sort((a, b) => a.start - b.start);
+
+      // Section Overrides
+      let activeAnimationEntrance = config.animation.entrance;
+      let activeAnimationActive = config.animation.active;
+      let activeAnimationExit = config.animation.exit;
+      let effectiveSectionGlow = effectiveGlow;
+      let effectiveSectionZoom = effectiveZoomOffset;
+      let currentEffectiveColorsActive = effectiveColorsActive;
+      let currentEffectiveColorsText = effectiveColorsText;
+
+      if (primaryActiveIndex !== -1) {
+          let activeSection = 'verse';
+          for (let i = primaryActiveIndex; i >= 0; i--) {
+              if (data.segments[i].section) {
+                  activeSection = data.segments[i].section || 'verse';
+                  break;
+              }
+          }
+          const normalizedSection = activeSection.toLowerCase().split(' ')[0] as SectionType;
+          const sectionStyle = config.sectionStyles?.[normalizedSection];
+          if (sectionStyle && sectionStyle.enabled) {
+              if (sectionStyle.colors_active) currentEffectiveColorsActive = sectionStyle.colors_active;
+              if (sectionStyle.colors_text) currentEffectiveColorsText = sectionStyle.colors_text;
+              if (sectionStyle.effects_glow_boost) effectiveSectionGlow = Math.min(1.0, effectiveGlow + sectionStyle.effects_glow_boost);
+              if (sectionStyle.camera_zoom_boost) effectiveSectionZoom += sectionStyle.camera_zoom_boost;
+              if (sectionStyle.animation?.entrance) activeAnimationEntrance = sectionStyle.animation.entrance;
+              if (sectionStyle.animation?.active) activeAnimationActive = sectionStyle.animation.active;
+              if (sectionStyle.animation?.exit) activeAnimationExit = sectionStyle.animation.exit;
+          }
+      }
+
+      visibleSegments.forEach(seg => {
+          const lines = getLines(seg.id, seg.words);
+          const isActiveSegment = (time >= seg.start && time <= seg.end);
+          
+          const lineHeight = 100 + (bass * 10);
+          const totalHeight = lines.length * lineHeight;
+          let startY = (CANVAS_HEIGHT / 2) - (totalHeight / 2) + (lineHeight / 2);
+
+          lines.forEach((lineWords, lineIdx) => {
+              const lineY = startY + (lineIdx * lineHeight);
+              ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} 80px ${config.font.family}`;
+              const totalLineWidth = lineWords.reduce((acc, w) => acc + ctx.measureText(w.word).width + 30, 0) - 30;
+              let currentX = (CANVAS_WIDTH / 2) - (totalLineWidth / 2);
+
+              lineWords.forEach((w, wIdx) => {
+                  const wordWidth = ctx.measureText(w.word).width;
+                  let centerX = currentX + wordWidth / 2;
+                  let centerY = lineY;
+
+                  const isWordActive = time >= w.start && time <= w.end;
+                  const isFuture = time < w.start;
+                  const isPast = time > w.end;
+                  
+                  // --- ANIMATION SELECTION (Random Support) ---
+                  const seed = w.start * 1000 + wIdx;
+                  const finalEntrance = activeAnimationEntrance === 'random' ? getRandomAnimation(seed, 'entrance') : activeAnimationEntrance;
+                  const finalActive = activeAnimationActive === 'random' ? getRandomAnimation(seed, 'active') : activeAnimationActive;
+                  
+                  let alpha = 1.0;
+                  let scale = 1.0;
+                  let blur = 0;
+                  let offsetY = 0;
+                  let offsetX = 0;
+                  let rotation = 0;
+                  let color = currentEffectiveColorsText;
+
+                  if (isFuture) {
+                      const dist = w.start - time;
+                      if (dist < 0.5) { 
+                          const t = 1 - (dist / 0.5); 
+                          alpha = t;
+                          
+                          if (finalEntrance === 'stack-pop') {
+                              if (dist < 0.2) {
+                                  const popT = 1 - (dist / 0.2);
+                                  scale = easeOutBack(popT);
+                              } else { scale = 0; }
+                          } else if (finalEntrance === 'slide') { offsetY = (1 - t) * 50;
+                          } else if (finalEntrance === 'slam') { scale = 2.0 - t;
+                          } else if (finalEntrance === 'zoom') { scale = t;
+                          } else if (finalEntrance === 'spin') { rotation = (1 - t) * Math.PI; scale = t;
+                          } else if (finalEntrance === 'blur') { blur = (1 - t) * 10;
+                          } else if (finalEntrance === 'glitch') {
+                              if (Math.random() > t) offsetX = (Math.random() - 0.5) * 20;
+                          } else if (finalEntrance === 'elastic') { scale = easeOutElastic(t);
+                          } else if (finalEntrance === 'drop') { offsetY = (1 - t) * -200;
+                          } else if (finalEntrance === 'spiral') { rotation = (1-t) * Math.PI * 2; scale = t * 0.1;
+                          } else if (finalEntrance === 'inflate') { scale = 0.5 + (t * 0.5); offsetY = (1-t) * 20;
+                          }
+                      } else { alpha = 0; }
+                  } else if (isWordActive) {
+                      color = currentEffectiveColorsActive;
+                      scale = 1.1; 
+
+                      if (finalActive === 'glitch-shake') {
+                          offsetX = (Math.random() - 0.5) * (10 + high * 20);
+                          offsetY = (Math.random() - 0.5) * (10 + high * 20);
+                          rotation = (Math.random() - 0.5) * 0.05;
+                      } else if (finalActive === 'pulse') { scale += Math.sin(time * 10) * 0.05 + (bass * 0.1);
+                      } else if (finalActive === 'jitter') { offsetX = (Math.random() - 0.5) * 5; offsetY = (Math.random() - 0.5) * 5;
+                      } else if (finalActive === 'bounce') { offsetY = Math.sin(time * 15) * 10;
+                      } else if (finalActive === 'wave') { offsetY = Math.sin(time * 5 + centerX * 0.01) * 10;
+                      } else if (finalActive === 'rotate') { rotation = Math.sin(time * 3) * 0.1;
+                      } else if (finalActive === 'pop') { if (bass > 0.6) scale = 1.4;
+                      } else if (finalActive === 'flash') { if (Math.sin(time * 20) > 0) alpha = 0.5;
+                      } else if (finalActive === 'float') { offsetY = Math.sin(time * 2) * 5; rotation = Math.sin(time * 1.5) * 0.02;
+                      } else if (finalActive === 'shiver') { rotation = (Math.random() - 0.5) * 0.1;
+                      } else if (finalActive === 'heartbeat') {
+                          const beat = (time * 2) % 1;
+                          if (beat < 0.2) scale = 1.3; else if (beat > 0.3 && beat < 0.4) scale = 1.2;
+                      } else if (finalActive === 'swing') { rotation = Math.sin(time * 4) * 0.1; offsetY = Math.abs(Math.sin(time * 4)) * 5;
+                      }
+                  } else if (isPast) {
+                      color = currentEffectiveColorsText;
+                      const dist = time - w.end;
+                      if (dist < 0.5) {
+                          const t = dist / 0.5;
+                          alpha = 1 - t;
+                          if (activeAnimationExit === 'slide') offsetY = t * -50;
+                          else if (activeAnimationExit === 'slam') scale = 1.0 + t;
+                          else if (activeAnimationExit === 'zoom') scale = 1.0 - t;
+                          else if (activeAnimationExit === 'blur') blur = t * 20;
+                      } else {
+                          if (isActiveSegment) { alpha = 0.3; blur = 1; } 
+                          else { alpha = 0; }
+                      }
+                  }
+
+                  if (alpha > 0.01) {
+                      ctx.save();
+                      ctx.translate(centerX + offsetX, centerY + offsetY);
+                      ctx.rotate(rotation);
+                      ctx.scale(scale, scale);
+
+                      if (blur > 0) ctx.filter = `blur(${blur}px)`;
+                      ctx.globalAlpha = alpha;
+                      
+                      // --- LEGIBILITY ENHANCEMENT: HARD STROKE ---
+                      // Always render a stroke behind the text to ensure it pops off the background
+                      ctx.lineJoin = 'round';
+                      ctx.lineWidth = 6;
+                      ctx.strokeStyle = 'rgba(0,0,0,0.8)'; // Semi-transparent black stroke
+                      ctx.strokeText(w.word, -wordWidth / 2, 0);
+
+                      if (effectiveSectionGlow > 0 && (isWordActive || alpha > 0.5)) {
+                          ctx.shadowBlur = effectiveSectionGlow * 30;
+                          ctx.shadowColor = isWordActive ? currentEffectiveColorsActive : currentEffectiveColorsText;
+                      }
+
+                      let textToDraw = w.word;
+                      if (isFuture && finalEntrance === 'scramble' && w.start - time < 0.5) {
+                          textToDraw = w.word.split('').map(c => Math.random() > 0.5 ? getRandomChar() : c).join('');
+                      }
+
+                      ctx.fillStyle = color;
+                      if (isWordActive && finalActive === 'rainbow') {
+                          const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
+                          grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
+                          grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
+                          ctx.fillStyle = grad;
+                      }
+
+                      ctx.fillText(textToDraw, -wordWidth / 2, 0);
+                      
+                      if (isWordActive && finalActive === 'glitch-shake') {
+                          const glitchShift = 5 + high * 10;
+                          ctx.globalCompositeOperation = 'lighter';
+                          ctx.fillStyle = '#ff00ff';
+                          ctx.fillText(textToDraw, -wordWidth/2 - glitchShift, 0);
+                          ctx.fillStyle = '#00ffff';
+                          ctx.fillText(textToDraw, -wordWidth/2 + glitchShift, 0);
+                      }
+
+                      ctx.restore();
+                  }
+
+                  currentX += wordWidth + 30;
+              });
+          });
+      });
+      ctx.restore(); // Restore Camera
     }
-
-    const primaryActiveIndex = data.segments.findIndex(
-      (seg) => time >= seg.start && time <= seg.end
-    );
-    const visibleSegments = data.segments.filter(
-      (seg) => (time >= seg.start - 2.0 && time <= seg.end + 2.0)
-    );
-    visibleSegments.sort((a, b) => a.start - b.start);
-
-    // Section Overrides
-    let activeAnimationEntrance = config.animation.entrance;
-    let activeAnimationActive = config.animation.active;
-    let activeAnimationExit = config.animation.exit;
-    let effectiveSectionGlow = effectiveGlow;
-    let effectiveSectionZoom = effectiveZoomOffset;
-    let currentEffectiveColorsActive = effectiveColorsActive;
-    let currentEffectiveColorsText = effectiveColorsText;
-
-    if (primaryActiveIndex !== -1) {
-        let activeSection = 'verse';
-        for (let i = primaryActiveIndex; i >= 0; i--) {
-            if (data.segments[i].section) {
-                activeSection = data.segments[i].section || 'verse';
-                break;
-            }
-        }
-        const normalizedSection = activeSection.toLowerCase().split(' ')[0] as SectionType;
-        const sectionStyle = config.sectionStyles?.[normalizedSection];
-        if (sectionStyle && sectionStyle.enabled) {
-            if (sectionStyle.colors_active) currentEffectiveColorsActive = sectionStyle.colors_active;
-            if (sectionStyle.colors_text) currentEffectiveColorsText = sectionStyle.colors_text;
-            if (sectionStyle.effects_glow_boost) effectiveSectionGlow = Math.min(1.0, effectiveGlow + sectionStyle.effects_glow_boost);
-            if (sectionStyle.camera_zoom_boost) effectiveSectionZoom += sectionStyle.camera_zoom_boost;
-            if (sectionStyle.animation?.entrance) activeAnimationEntrance = sectionStyle.animation.entrance;
-            if (sectionStyle.animation?.active) activeAnimationActive = sectionStyle.animation.active;
-            if (sectionStyle.animation?.exit) activeAnimationExit = sectionStyle.animation.exit;
-        }
-    }
-
-    visibleSegments.forEach(seg => {
-        const lines = getLines(seg.id, seg.words);
-        const isActiveSegment = (time >= seg.start && time <= seg.end);
-        
-        const lineHeight = 100 + (bass * 10);
-        const totalHeight = lines.length * lineHeight;
-        let startY = (CANVAS_HEIGHT / 2) - (totalHeight / 2) + (lineHeight / 2);
-
-        lines.forEach((lineWords, lineIdx) => {
-             const lineY = startY + (lineIdx * lineHeight);
-             ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} 80px ${config.font.family}`;
-             const totalLineWidth = lineWords.reduce((acc, w) => acc + ctx.measureText(w.word).width + 30, 0) - 30;
-             let currentX = (CANVAS_WIDTH / 2) - (totalLineWidth / 2);
-
-             lineWords.forEach((w, wIdx) => {
-                 const wordWidth = ctx.measureText(w.word).width;
-                 let centerX = currentX + wordWidth / 2;
-                 let centerY = lineY;
-
-                 const isWordActive = time >= w.start && time <= w.end;
-                 const isFuture = time < w.start;
-                 const isPast = time > w.end;
-                 
-                 // --- ANIMATION SELECTION (Random Support) ---
-                 const seed = w.start * 1000 + wIdx;
-                 const finalEntrance = activeAnimationEntrance === 'random' ? getRandomAnimation(seed, 'entrance') : activeAnimationEntrance;
-                 const finalActive = activeAnimationActive === 'random' ? getRandomAnimation(seed, 'active') : activeAnimationActive;
-                 
-                 let alpha = 1.0;
-                 let scale = 1.0;
-                 let blur = 0;
-                 let offsetY = 0;
-                 let offsetX = 0;
-                 let rotation = 0;
-                 let color = currentEffectiveColorsText;
-
-                 if (isFuture) {
-                     const dist = w.start - time;
-                     if (dist < 0.5) { 
-                         const t = 1 - (dist / 0.5); 
-                         alpha = t;
-                         
-                         if (finalEntrance === 'stack-pop') {
-                             if (dist < 0.2) {
-                                 const popT = 1 - (dist / 0.2);
-                                 scale = easeOutBack(popT);
-                             } else { scale = 0; }
-                         } else if (finalEntrance === 'slide') { offsetY = (1 - t) * 50;
-                         } else if (finalEntrance === 'slam') { scale = 2.0 - t;
-                         } else if (finalEntrance === 'zoom') { scale = t;
-                         } else if (finalEntrance === 'spin') { rotation = (1 - t) * Math.PI; scale = t;
-                         } else if (finalEntrance === 'blur') { blur = (1 - t) * 10;
-                         } else if (finalEntrance === 'glitch') {
-                             if (Math.random() > t) offsetX = (Math.random() - 0.5) * 20;
-                         } else if (finalEntrance === 'elastic') { scale = easeOutElastic(t);
-                         } else if (finalEntrance === 'drop') { offsetY = (1 - t) * -200;
-                         } else if (finalEntrance === 'spiral') { rotation = (1-t) * Math.PI * 2; scale = t * 0.1;
-                         } else if (finalEntrance === 'inflate') { scale = 0.5 + (t * 0.5); offsetY = (1-t) * 20;
-                         }
-                     } else { alpha = 0; }
-                 } else if (isWordActive) {
-                     color = currentEffectiveColorsActive;
-                     scale = 1.1; 
-
-                     if (finalActive === 'glitch-shake') {
-                        offsetX = (Math.random() - 0.5) * (10 + high * 20);
-                        offsetY = (Math.random() - 0.5) * (10 + high * 20);
-                        rotation = (Math.random() - 0.5) * 0.05;
-                     } else if (finalActive === 'pulse') { scale += Math.sin(time * 10) * 0.05 + (bass * 0.1);
-                     } else if (finalActive === 'jitter') { offsetX = (Math.random() - 0.5) * 5; offsetY = (Math.random() - 0.5) * 5;
-                     } else if (finalActive === 'bounce') { offsetY = Math.sin(time * 15) * 10;
-                     } else if (finalActive === 'wave') { offsetY = Math.sin(time * 5 + centerX * 0.01) * 10;
-                     } else if (finalActive === 'rotate') { rotation = Math.sin(time * 3) * 0.1;
-                     } else if (finalActive === 'pop') { if (bass > 0.6) scale = 1.4;
-                     } else if (finalActive === 'flash') { if (Math.sin(time * 20) > 0) alpha = 0.5;
-                     } else if (finalActive === 'float') { offsetY = Math.sin(time * 2) * 5; rotation = Math.sin(time * 1.5) * 0.02;
-                     } else if (finalActive === 'shiver') { rotation = (Math.random() - 0.5) * 0.1;
-                     } else if (finalActive === 'heartbeat') {
-                         const beat = (time * 2) % 1;
-                         if (beat < 0.2) scale = 1.3; else if (beat > 0.3 && beat < 0.4) scale = 1.2;
-                     } else if (finalActive === 'swing') { rotation = Math.sin(time * 4) * 0.1; offsetY = Math.abs(Math.sin(time * 4)) * 5;
-                     }
-                 } else if (isPast) {
-                     color = currentEffectiveColorsText;
-                     const dist = time - w.end;
-                     if (dist < 0.5) {
-                         const t = dist / 0.5;
-                         alpha = 1 - t;
-                         if (activeAnimationExit === 'slide') offsetY = t * -50;
-                         else if (activeAnimationExit === 'slam') scale = 1.0 + t;
-                         else if (activeAnimationExit === 'zoom') scale = 1.0 - t;
-                         else if (activeAnimationExit === 'blur') blur = t * 20;
-                     } else {
-                         if (isActiveSegment) { alpha = 0.3; blur = 1; } 
-                         else { alpha = 0; }
-                     }
-                 }
-
-                 if (alpha > 0.01) {
-                     ctx.save();
-                     ctx.translate(centerX + offsetX, centerY + offsetY);
-                     ctx.rotate(rotation);
-                     ctx.scale(scale, scale);
-
-                     if (blur > 0) ctx.filter = `blur(${blur}px)`;
-                     ctx.globalAlpha = alpha;
-                     
-                     // --- LEGIBILITY ENHANCEMENT: HARD STROKE ---
-                     // Always render a stroke behind the text to ensure it pops off the background
-                     ctx.lineJoin = 'round';
-                     ctx.lineWidth = 6;
-                     ctx.strokeStyle = 'rgba(0,0,0,0.8)'; // Semi-transparent black stroke
-                     ctx.strokeText(w.word, -wordWidth / 2, 0);
-
-                     if (effectiveSectionGlow > 0 && (isWordActive || alpha > 0.5)) {
-                         ctx.shadowBlur = effectiveSectionGlow * 30;
-                         ctx.shadowColor = isWordActive ? currentEffectiveColorsActive : currentEffectiveColorsText;
-                     }
-
-                     let textToDraw = w.word;
-                     if (isFuture && finalEntrance === 'scramble' && w.start - time < 0.5) {
-                         textToDraw = w.word.split('').map(c => Math.random() > 0.5 ? getRandomChar() : c).join('');
-                     }
-
-                     ctx.fillStyle = color;
-                     if (isWordActive && finalActive === 'rainbow') {
-                         const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
-                         grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
-                         grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
-                         ctx.fillStyle = grad;
-                     }
-
-                     ctx.fillText(textToDraw, -wordWidth / 2, 0);
-                     
-                     if (isWordActive && finalActive === 'glitch-shake') {
-                         const glitchShift = 5 + high * 10;
-                         ctx.globalCompositeOperation = 'lighter';
-                         ctx.fillStyle = '#ff00ff';
-                         ctx.fillText(textToDraw, -wordWidth/2 - glitchShift, 0);
-                         ctx.fillStyle = '#00ffff';
-                         ctx.fillText(textToDraw, -wordWidth/2 + glitchShift, 0);
-                     }
-
-                     ctx.restore();
-                 }
-
-                 currentX += wordWidth + 30;
-             });
-        });
-    });
-    ctx.restore(); // Restore Camera
 
     // ===========================
     // LAYER 5: FINAL COMPOSITION (Chromatic Aberration affects everything)

@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
 import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect } from '../types';
 import { TimelineEditor } from './TimelineEditor';
@@ -23,6 +23,8 @@ interface SettingsPanelProps {
   audioLayers: AudioLayer[];
   onUpdateLayer: (id: string, updates: Partial<AudioLayer>) => void;
   onRemoveLayer: (id: string) => void;
+  // Project Management
+  onResetProject: () => void;
 }
 
 // Helper Components
@@ -225,6 +227,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onRemoveLayer,
     onJsonUpload,
     onSrtUpload,
+    onResetProject
 }) => {
   const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'sections' | 'templates' | 'customize' | 'timeline'>('project');
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
@@ -569,6 +572,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         <input type="file" ref={fontInputRef} onChange={handleFontUpload} accept=".ttf,.woff,.woff2,.otf" className="hidden"/>
                     </div>
                 </section>
+
+                <section className="pt-4 border-t border-white/5">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                         <RotateCcw size={14}/> Reset
+                    </h3>
+                    <button
+                        onClick={onResetProject}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-950/30 hover:bg-red-900/50 text-red-400 rounded-lg border border-red-900/50 transition-colors text-sm font-bold"
+                    >
+                        <Trash2 size={16} />
+                        Reset Project Defaults
+                    </button>
+                </section>
              </div>
         )}
 
@@ -873,9 +889,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
             {/* Font */}
              <section>
-              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Type size={14}/> Typography
-              </h3>
+               <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                    <Type size={14}/> Typography
+                  </h3>
+                  <ToggleInput label="Show Lyrics" value={config.showLyrics ?? true} onChange={(v) => onUpdate({ ...config, showLyrics: v })} />
+               </div>
               <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
                 <SelectInput 
                    label="Font Family"
