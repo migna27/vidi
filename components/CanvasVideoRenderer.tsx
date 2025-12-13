@@ -1251,13 +1251,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
           const lines = getLines(seg.id, seg.words);
           const isActiveSegment = (time >= seg.start && time <= seg.end);
           
-          const lineHeight = 100 + (bass * 10);
+          // DYNAMIC LINE HEIGHT CALCULATION
+          const fontSize = config.font.fontSize || 80;
+          const lineHeight = (fontSize * 1.2) + (bass * 10);
+          
           const totalHeight = lines.length * lineHeight;
           let startY = (CANVAS_HEIGHT / 2) - (totalHeight / 2) + (lineHeight / 2);
 
           lines.forEach((lineWords, lineIdx) => {
               const lineY = startY + (lineIdx * lineHeight);
-              ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} 80px ${config.font.family}`;
+              // APPLY DYNAMIC FONT SIZE
+              ctx.font = `${config.font.italic ? 'italic' : ''} ${config.font.weight} ${fontSize}px ${config.font.family}`;
               const totalLineWidth = lineWords.reduce((acc, w) => acc + ctx.measureText(w.word).width + 30, 0) - 30;
               let currentX = (CANVAS_WIDTH / 2) - (totalLineWidth / 2);
 
@@ -1357,7 +1361,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                       // --- LEGIBILITY ENHANCEMENT: HARD STROKE ---
                       // Always render a stroke behind the text to ensure it pops off the background
                       ctx.lineJoin = 'round';
-                      ctx.lineWidth = 6;
+                      ctx.lineWidth = Math.max(3, fontSize * 0.08); // Responsive stroke width
                       ctx.strokeStyle = 'rgba(0,0,0,0.8)'; // Semi-transparent black stroke
                       ctx.strokeText(w.word, -wordWidth / 2, 0);
 

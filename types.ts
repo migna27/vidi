@@ -157,6 +157,7 @@ export interface RendererConfig {
     family: string;
     weight: string;
     italic: boolean;
+    fontSize: number; // Size in px
   };
   animation: {
     entrance: AnimationStyle;

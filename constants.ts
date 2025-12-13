@@ -54,7 +54,7 @@ export const TEMPLATES: RendererConfig[] = [
       active: '#FFFF00', // Bright Yellow
       secondary: '#FF00FF' // Magenta
     },
-    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 60 },
     animation: {
       entrance: 'stack-pop',
       active: 'bounce',
@@ -126,7 +126,7 @@ export const TEMPLATES: RendererConfig[] = [
       active: '#00ff00',
       secondary: '#333333'
     },
-    font: { family: 'Anton', weight: '900', italic: false },
+    font: { family: 'Anton', weight: '900', italic: false, fontSize: 90 },
     animation: {
       entrance: 'random', // Dynamic randomness
       active: 'random', // Dynamic randomness
@@ -192,7 +192,7 @@ export const TEMPLATES: RendererConfig[] = [
       active: '#00ffff', // Cyan
       secondary: '#a855f7' // Purple
     },
-    font: { family: 'Montserrat', weight: '900', italic: false },
+    font: { family: 'Montserrat', weight: '900', italic: false, fontSize: 80 },
     animation: {
       entrance: 'slide',
       active: 'neon',
@@ -254,7 +254,7 @@ export const TEMPLATES: RendererConfig[] = [
     resolutionId: '16:9',
     background: { type: 'solid', color: '#050505', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#fee02f', active: '#00f0ff', secondary: '#ff003c' },
-    font: { family: 'Oswald', weight: '700', italic: true },
+    font: { family: 'Oswald', weight: '700', italic: true, fontSize: 85 },
     animation: { entrance: 'glitch', active: 'glitch-shake', exit: 'slam' },
     audioReactivity: { enabled: true, sensitivity: 1.3, visualizerStyle: 'shockwave' },
     effects: { 
@@ -274,7 +274,7 @@ export const TEMPLATES: RendererConfig[] = [
     resolutionId: '16:9',
     background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: 'stars', intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#e2e8f0', active: '#c4b5fd', secondary: '#818cf8' },
-    font: { family: 'Playfair Display', weight: '700', italic: true },
+    font: { family: 'Playfair Display', weight: '700', italic: true, fontSize: 75 },
     animation: { entrance: 'blur', active: 'float', exit: 'fade' },
     audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
     effects: { 
@@ -294,7 +294,7 @@ export const TEMPLATES: RendererConfig[] = [
     resolutionId: '16:9',
     background: { type: 'solid', color: '#020202', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#d4d4d4', active: '#ff0000', secondary: '#520000' }, // Improved contrast
-    font: { family: 'Cinzel', weight: '700', italic: false },
+    font: { family: 'Cinzel', weight: '700', italic: false, fontSize: 80 },
     animation: { entrance: 'typewriter', active: 'shiver', exit: 'burn' },
     audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'none' },
     effects: { 
@@ -314,7 +314,7 @@ export const TEMPLATES: RendererConfig[] = [
     resolutionId: '1:1',
     background: { type: 'solid', color: '#111111', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#33ff00', active: '#ff00ff', secondary: '#00ffff' },
-    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 60 },
     animation: { entrance: 'typewriter', active: 'flash', exit: 'glitch' },
     audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
     effects: {

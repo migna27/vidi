@@ -902,7 +902,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                    options={FONTS} 
                    onChange={(v) => updateNested('font', 'family', v)}
                 />
-                {/* ... font controls ... */}
+                
+                {/* Font Size Slider */}
+                <div>
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Size</span>
+                        <span>{config.font.fontSize || 80}px</span>
+                    </div>
+                    <input 
+                        type="range" min="20" max="200" step="5" 
+                        value={config.font.fontSize || 80} 
+                        onChange={(e) => updateNested('font', 'fontSize', parseFloat(e.target.value))}
+                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                </div>
+
                 <div className="flex gap-3">
                     <div className="flex-1">
                         <SelectInput 
