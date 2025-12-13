@@ -30,6 +30,8 @@ interface Particle {
   angle: number; 
   life: number;
   maxLife: number;
+  tetrominoType?: number;
+  rotationIndex?: number;
 }
 
 interface Shockwave {
@@ -111,6 +113,17 @@ const getRandomAnimation = (seed: number, type: 'entrance' | 'active'): string =
         return activeOptions[idx];
     }
 };
+
+// Tetromino Definitions (Simple matrices)
+const TETROMINOS = [
+    [[1, 1, 1, 1]], // I
+    [[1, 1], [1, 1]], // O
+    [[0, 1, 0], [1, 1, 1]], // T
+    [[1, 1, 0], [0, 1, 1]], // S
+    [[0, 1, 1], [1, 1, 0]], // Z
+    [[1, 0, 0], [1, 1, 1]], // J
+    [[0, 0, 1], [1, 1, 1]]  // L
+];
 
 // --- PROCEDURAL BACKGROUND DRAWING FUNCTIONS ---
 
@@ -637,30 +650,49 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const newParticles: Particle[] = [];
         for (let i = 0; i < pCount; i++) {
             const maxLife = (Math.random() * 5) + 3;
+            // Configurable size based on shape
+            const isTetris = config.particles.shape === 'tetris';
+            
             const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5);
+            
             newParticles.push({
                 id: i,
                 x: Math.random() * CANVAS_WIDTH,
                 y: Math.random() * CANVAS_HEIGHT,
-                vx: (Math.random() - 0.5) * config.particles.speed * 2,
-                vy: (Math.random() - 0.5) * config.particles.speed * 2,
+                // Tetris: Fall straight down (vx=0, vy>0), others random drift
+                vx: isTetris ? 0 : (Math.random() - 0.5) * config.particles.speed * 2,
+                vy: isTetris ? (Math.random() * 2 + 3) * config.particles.speed : (Math.random() - 0.5) * config.particles.speed * 2,
                 speed: newSpeed,
-                size: (Math.random() * 4) + 2,
+                // Tetris: Much larger (20-50), others small (2-6)
+                size: isTetris ? (Math.random() * 30) + 20 : (Math.random() * 4) + 2,
                 color: config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff',
                 alpha: Math.random() * 0.5 + 0.2,
                 phase: Math.random() * Math.PI * 2,
-                angle: Math.random() * Math.PI * 2,
+                // Tetris Random Rotation: 0, 90, 180, 270 (0, PI/2, PI, 1.5PI)
+                angle: isTetris ? (Math.floor(Math.random() * 4) * (Math.PI / 2)) : Math.random() * Math.PI * 2, 
                 life: Math.random() * maxLife,
-                maxLife: maxLife
+                maxLife: maxLife,
+                tetrominoType: Math.floor(Math.random() * TETROMINOS.length),
+                rotationIndex: Math.floor(Math.random() * 4)
             });
         }
         particlesRef.current = newParticles;
     } else {
+        const isTetris = config.particles.shape === 'tetris';
         particlesRef.current.forEach(p => {
              const currentSpeed = Math.sqrt(p.vx*p.vx + p.vy*p.vy) || 0.1;
              const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5); 
-             p.vx = (p.vx / currentSpeed) * newSpeed;
-             p.vy = (p.vy / currentSpeed) * newSpeed;
+             
+             if (isTetris) {
+                 p.vx = 0;
+                 p.vy = (Math.random() * 2 + 3) * config.particles.speed;
+                 p.size = (Math.random() * 30) + 20;
+                 p.angle = (Math.floor(Math.random() * 4) * (Math.PI / 2));
+             } else {
+                 p.vx = (p.vx / currentSpeed) * newSpeed;
+                 p.vy = (p.vy / currentSpeed) * newSpeed;
+             }
+             
              p.speed = newSpeed;
              if (!config.particles.color.includes(p.color)) {
                  p.color = config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff';
@@ -668,7 +700,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         });
     }
 
-  }, [config.particles.count, config.particles.speed, config.particles.enabled, config.particles.color, CANVAS_WIDTH, CANVAS_HEIGHT]);
+  }, [config.particles.count, config.particles.speed, config.particles.enabled, config.particles.color, CANVAS_WIDTH, CANVAS_HEIGHT, config.particles.shape]);
 
   const getLines = (segmentId: string, words: Word[]): Word[][] => {
     if (wordsByLineCache.current.has(segmentId)) {
@@ -802,6 +834,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              const hasGhosting = effectiveImageEffects.includes('ghosting');
              const hasMirrorX = effectiveImageEffects.includes('mirror-x');
              const hasPixelNoise = effectiveImageEffects.includes('pixel-noise');
+             const hasBrightHappy = effectiveImageEffects.includes('bright-happy');
 
              if (hasZoom) scale *= 1.0 + (Math.sin(time * 0.2 * speedScalar) * 0.1); 
              if (audioEnabled && effectiveImageEffects.some(e => ['dark-error','red-error'].includes(e))) {
@@ -813,6 +846,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              y = (CANVAS_HEIGHT / 2) - (height / 2) * scale;
 
              // --- EFFECT LOGIC ---
+
+             if (hasBrightHappy) {
+                 ctx.filter = 'brightness(1.1) saturate(1.2)';
+             }
              
              if (hasMirrorX) {
                  ctx.translate(CANVAS_WIDTH, 0);
@@ -1042,7 +1079,20 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
         const particleBehavior = config.particles.particleBehavior || 'drift';
         particlesRef.current.forEach(p => {
-             if (particleBehavior === 'rise') {
+             if (config.particles.shape === 'tetris') {
+                 // SPECIAL LOGIC FOR TETRIS: Fall down, reset at top
+                 p.y += p.speed * (1 + bass * 0.5); 
+                 
+                 // If out of bounds (bottom), reset to top with new shape/color
+                 if (p.y > CANVAS_HEIGHT + 100) {
+                     p.y = -100;
+                     p.x = Math.random() * CANVAS_WIDTH;
+                     p.tetrominoType = Math.floor(Math.random() * TETROMINOS.length);
+                     p.color = config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff';
+                     // New random discrete angle
+                     p.angle = (Math.floor(Math.random() * 4) * (Math.PI / 2));
+                 }
+             } else if (particleBehavior === 'rise') {
                  p.y -= p.vy * safeDt * 50; 
                  p.x += Math.sin(p.phase + time) * p.speed * 0.5;
                  p.life -= safeDt;
@@ -1064,13 +1114,48 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              
              ctx.save();
              ctx.translate(p.x, p.y);
-             ctx.rotate(p.angle);
+             ctx.rotate(p.angle); // Always apply rotation (static or dynamic)
+             
              ctx.fillStyle = p.color;
              ctx.globalAlpha = p.alpha;
              const pSize = p.size * (1 + high);
-             if (config.particles.shape === 'circle') { ctx.beginPath(); ctx.arc(0,0, pSize, 0, Math.PI*2); ctx.fill(); }
+
+             if (config.particles.shape === 'tetris') {
+                 // Force 80% opacity logic for Happy Tetris Rain as requested
+                 ctx.globalAlpha = 0.8; 
+                 const shape = TETROMINOS[p.tetrominoType || 0];
+                 const blockSize = pSize * 2; // Make them visible
+                 
+                 // Center the drawing
+                 const rows = shape.length;
+                 const cols = shape[0].length;
+                 const offsetX = (cols * blockSize) / 2;
+                 const offsetY = (rows * blockSize) / 2;
+                 
+                 shape.forEach((row, rY) => {
+                     row.forEach((val, rX) => {
+                         if (val) {
+                             const drawX = (rX * blockSize) - offsetX;
+                             const drawY = (rY * blockSize) - offsetY;
+                             
+                             // Draw Base Block
+                             ctx.fillStyle = p.color;
+                             ctx.fillRect(drawX, drawY, blockSize, blockSize);
+                             
+                             // Draw "Candy" Highlight (Top Shine)
+                             ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                             ctx.fillRect(drawX, drawY, blockSize, blockSize * 0.25);
+                         }
+                     });
+                 });
+
+             } else if (config.particles.shape === 'circle') { ctx.beginPath(); ctx.arc(0,0, pSize, 0, Math.PI*2); ctx.fill(); }
              else if (config.particles.shape === 'square') ctx.fillRect(-pSize, -pSize, pSize*2, pSize*2);
              else if (config.particles.shape === 'triangle') { drawPolygon(ctx, 0, 0, pSize * 2, 3, 0); ctx.fill(); }
+             else if (config.particles.shape === 'star') { drawPolygon(ctx, 0, 0, pSize * 2, 5, 0); ctx.fill(); }
+             else if (config.particles.shape === 'hexagon') { drawPolygon(ctx, 0, 0, pSize * 2, 6, 0); ctx.fill(); }
+             else if (config.particles.shape === 'note') { drawNote(ctx, 0, 0, pSize); }
+
              ctx.restore();
         });
         ctx.restore(); // End Camera for Particles

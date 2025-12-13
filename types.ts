@@ -86,12 +86,12 @@ export interface RenderStatus {
 
 export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch' | 'stack-pop' | 'random';
 export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing' | 'glitch-shake' | 'random';
-export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note';
+export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note' | 'tetris';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
 export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
-export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x';
+export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x' | 'bright-happy';
 
 export interface KeyframeValues {
   colors_text?: string;

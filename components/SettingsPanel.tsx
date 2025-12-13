@@ -102,7 +102,7 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
 );
 
 const IMAGE_EFFECT_OPTIONS = [
-    'zoom-slow', 'chromatic-shift', 'vhs-stripes', 'liquid-warp', 
+    'bright-happy', 'zoom-slow', 'chromatic-shift', 'vhs-stripes', 'liquid-warp', 
     'scan-drift', 'ghosting', 'pixel-noise', 'mirror-x', 
     'dark-error', 'red-error', 'alert', 'thermal'
 ];
@@ -683,7 +683,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                             }} 
                                         />
                                         <SelectInput 
-                                            label="Exit" 
+                                            label="Out" 
                                             value={style.animation?.exit || config.animation.exit} 
                                             options={['fade', 'slide', 'slam', 'zoom', 'blur', 'glitch', 'drop', 'spiral', 'sink', 'burn']} 
                                             onChange={(v) => {
@@ -702,6 +702,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                      );
                  })}
             </div>
+        )}
+
+        {/* TEMPLATES TAB */}
+        {activeTab === 'templates' && (
+          <div className="p-4 grid grid-cols-2 gap-3">
+             {TEMPLATES.map(t => (
+               <button
+                 key={t.id}
+                 onClick={() => handleTemplateSelect(t)}
+                 className="flex flex-col items-start gap-2 p-3 bg-neutral-900 border border-white/5 hover:border-cyan-500/50 rounded-xl transition-all hover:bg-neutral-800 group text-left"
+               >
+                 <div className="w-full aspect-video bg-black/40 rounded-lg mb-1 overflow-hidden relative">
+                    {/* Visual Preview Placeholder */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Sparkles className="text-gray-700 group-hover:text-cyan-500 transition-colors" />
+                    </div>
+                 </div>
+                 <div>
+                    <span className="text-sm font-bold block text-gray-200 group-hover:text-cyan-400">{t.name}</span>
+                    <span className="text-[10px] text-gray-500 uppercase">{t.resolutionId}</span>
+                 </div>
+               </button>
+             ))}
+          </div>
         )}
 
         {/* CUSTOMIZE TAB */}
@@ -989,7 +1013,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         <SelectInput 
                             label="Shape" 
                             value={config.particles.shape} 
-                            options={['circle', 'square', 'star', 'hexagon', 'triangle', 'note']} 
+                            options={['circle', 'square', 'star', 'hexagon', 'triangle', 'note', 'tetris']} 
                             onChange={(v) => updateNested('particles', 'shape', v)} 
                         />
                         <SelectInput 

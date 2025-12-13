@@ -37,6 +37,79 @@ const DEFAULT_SECTION_STYLES = {
 
 export const TEMPLATES: RendererConfig[] = [
   {
+    id: 'happy-tetris-rain',
+    name: 'Happy Tetris Rain',
+    showLyrics: true,
+    resolutionId: '16:9',
+    background: {
+      type: 'solid', // User should upload "Migna" image here, defaulting to solid for now
+      color: '#1a1a1a', 
+      playbackSpeed: 1.0,
+      imageEffects: ['bright-happy'], // New effect: Brillo +10%, Saturation +20%
+      imageEffectSpeed: 1.0,
+      intensity: 1.0
+    },
+    colors: {
+      text: '#ffffff',
+      active: '#FFFF00', // Bright Yellow
+      secondary: '#FF00FF' // Magenta
+    },
+    font: { family: 'Press Start 2P', weight: '400', italic: false },
+    animation: {
+      entrance: 'stack-pop',
+      active: 'bounce',
+      exit: 'drop'
+    },
+    audioReactivity: {
+      enabled: true,
+      sensitivity: 1.0,
+      visualizerStyle: 'none'
+    },
+    effects: {
+      glow: 0.3,
+      blur: false,
+      chromaticAberration: false,
+      vignette: false,
+      scanlines: false,
+      filmGrain: false,
+      mirror: false,
+      invert: false,
+      barrelDistortion: false,
+      mosaic: false,
+      sepia: false,
+      grayscale: false,
+      halftone: false,
+      oldMovie: false,
+      kaleidoscope: false,
+      rgbSplit: false
+    },
+    particles: {
+      enabled: true,
+      count: 30, // Reduced count because they are larger now
+      speed: 1.5,
+      shape: 'tetris', // NEW SHAPE
+      color: [
+        '#00FFFF', // Cyan
+        '#FFFF00', // Bright Yellow
+        '#FF00FF', // Magenta
+        '#32CD32', // Lime Green
+        '#FFA500'  // Orange
+      ],
+      particleBehavior: 'drift'
+    },
+    camera: {
+      shake: false,
+      zoomBeat: true,
+      rotate: false,
+      sway: true,
+      hardKick: false,
+      panic: false,
+      screenPump: false
+    },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
     id: 'kinetic-mix',
     name: 'Kinetic Mix',
     showLyrics: true,
