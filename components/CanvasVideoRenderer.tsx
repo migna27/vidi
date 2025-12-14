@@ -568,6 +568,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const wordPositionsCache = useRef<Map<string, { x: number, y: number }>>(new Map());
   const screenPumpState = useRef({ intensity: 0 });
   
+  // VHS Glitch Logic State
+  const vhsGlitchState = useRef({
+      active: false,
+      startTime: 0,
+      duration: 3.0 // 3 seconds sequence
+  });
+  
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -854,11 +861,47 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              if (hasMirrorX) {
                  ctx.translate(CANVAS_WIDTH, 0);
                  ctx.scale(-1, 1);
-                 // Need to flip texture draw logic if we flip context? 
-                 // Actually standard drawImage works, but we might want just half reflected?
-                 // Simple mirror: Flip whole context, draw, then restore. Result: Flipped image.
-                 // To do "Kaleidoscope-ish" mirror (left half mirrored to right), complex clipping needed.
-                 // For now, simple horizontal flip is active.
+             }
+
+             // --- REACTIVE VHS GLITCH LOGIC ---
+             if (hasVhsStripes) {
+                 // Trigger Sequence logic
+                 if (audioEnabled && bass > 0.8 && !vhsGlitchState.current.active) {
+                     vhsGlitchState.current.active = true;
+                     vhsGlitchState.current.startTime = time;
+                 }
+
+                 if (vhsGlitchState.current.active) {
+                     const elapsed = time - vhsGlitchState.current.startTime;
+                     
+                     if (elapsed < vhsGlitchState.current.duration) {
+                         // PHASE 1: Blink (First 0.2s)
+                         if (elapsed < 0.2) {
+                             if (Math.floor(elapsed * 20) % 2 === 0) {
+                                 ctx.fillStyle = 'black';
+                                 ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                             } else {
+                                 ctx.filter = 'invert(1)';
+                             }
+                         } 
+                         // PHASE 2: Blur -> Refocus (0.2s to 3.0s)
+                         else {
+                             // Normalize time from 0 to 1 over the remaining duration
+                             const blurDuration = vhsGlitchState.current.duration - 0.2;
+                             const blurProgress = (elapsed - 0.2) / blurDuration;
+                             
+                             // Blur starts high (20px) and goes to 0
+                             const blurAmount = (1 - blurProgress) * 20;
+                             if (blurAmount > 0.5) {
+                                ctx.filter = `blur(${blurAmount}px)`;
+                             }
+                         }
+                     } else {
+                         // Reset
+                         vhsGlitchState.current.active = false;
+                         ctx.filter = 'none';
+                     }
+                 }
              }
 
              if (hasGhosting) {
@@ -951,16 +994,49 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              }
 
              if (hasVhsStripes) {
-                 const numStripes = 5;
-                 const stripeOffset = (time * 100 * speedScalar) % CANVAS_HEIGHT;
+                 const stripeTime = time * speedScalar;
                  ctx.save();
-                 ctx.globalCompositeOperation = 'overlay';
-                 for(let i=0; i<numStripes; i++) {
-                     const sy = (stripeOffset + i * (CANVAS_HEIGHT/numStripes)) % CANVAS_HEIGHT;
-                     const height = 10 + Math.random() * 20;
-                     ctx.fillStyle = i % 2 === 0 ? 'rgba(0,255,255,0.2)' : 'rgba(255,0,255,0.2)';
-                     ctx.fillRect(0, sy, CANVAS_WIDTH, height);
+                 
+                 // 1. Static Noise Bar (Tracking) - Always present but subtle
+                 const trackingY = (stripeTime * 100) % (CANVAS_HEIGHT * 1.5) - (CANVAS_HEIGHT * 0.25);
+                 const trackingHeight = CANVAS_HEIGHT * 0.15;
+                 
+                 const noisePat = getNoisePattern(ctx, 100, 100);
+                 if (noisePat) {
+                     ctx.globalCompositeOperation = 'soft-light';
+                     ctx.globalAlpha = 0.4;
+                     ctx.fillStyle = noisePat;
+                     ctx.fillRect(0, trackingY, CANVAS_WIDTH, trackingHeight);
                  }
+
+                 // 2. Thick Uniform Stripes
+                 ctx.globalCompositeOperation = 'color-dodge'; 
+                 const numStripes = 6;
+                 // Uniform speed for all lines
+                 const baseSpeed = 500 * speedScalar;
+                 
+                 for(let i=0; i<numStripes; i++) {
+                     // Spacing between lines
+                     const spacing = CANVAS_HEIGHT / (numStripes * 0.5);
+                     // Uniform movement
+                     const y = (stripeTime * baseSpeed + (i * spacing)) % CANVAS_HEIGHT;
+                     // Thicker lines (10px - 30px)
+                     const h = 10 + Math.random() * 20;
+                     
+                     // Alternating VHS colors
+                     const color = i % 3 === 0 ? '#00ffff' : (i % 3 === 1 ? '#ff00ff' : '#ffff00');
+                     
+                     ctx.fillStyle = color;
+                     ctx.globalAlpha = 0.7; // Consistent opacity
+                     
+                     // Draw stripe
+                     ctx.fillRect(0, y, CANVAS_WIDTH, h);
+                     
+                     // Minimal ghosting for these thick lines to keep them distinct
+                     ctx.globalAlpha = 0.2;
+                     ctx.fillRect(5, y - 5, CANVAS_WIDTH, h);
+                 }
+                 
                  ctx.restore();
              }
              
