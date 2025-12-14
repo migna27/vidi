@@ -572,7 +572,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const vhsGlitchState = useRef({
       active: false,
       startTime: 0,
-      duration: 3.0 // 3 seconds sequence
+      duration: 3.0, // 3 seconds sequence
+      lastEndTime: -10 // Start with a state that allows immediate trigger
   });
   
   const bgImageRef = useRef<HTMLImageElement | null>(null);
@@ -865,8 +866,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
              // --- REACTIVE VHS GLITCH LOGIC ---
              if (hasVhsStripes) {
-                 // Trigger Sequence logic
-                 if (audioEnabled && bass > 0.8 && !vhsGlitchState.current.active) {
+                 // Calculate time since last animation ENDED
+                 const timeSinceLastEnd = time - vhsGlitchState.current.lastEndTime;
+
+                 // Trigger Sequence logic (Bass trigger + 5s cooldown check)
+                 if (audioEnabled && bass > 0.8 && !vhsGlitchState.current.active && timeSinceLastEnd > 5.0) {
                      vhsGlitchState.current.active = true;
                      vhsGlitchState.current.startTime = time;
                  }
@@ -897,8 +901,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                              }
                          }
                      } else {
-                         // Reset
+                         // Reset and mark end time for cooldown
                          vhsGlitchState.current.active = false;
+                         vhsGlitchState.current.lastEndTime = time;
                          ctx.filter = 'none';
                      }
                  }
