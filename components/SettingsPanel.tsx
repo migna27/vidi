@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle } from '../types';
 import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
@@ -105,6 +105,11 @@ const IMAGE_EFFECT_OPTIONS = [
     'bright-happy', 'zoom-slow', 'chromatic-shift', 'vhs-stripes', 'liquid-warp', 
     'scan-drift', 'ghosting', 'pixel-noise', 'mirror-x', 
     'dark-error', 'red-error', 'alert', 'thermal'
+];
+
+const PROCEDURAL_STYLE_OPTIONS = [
+    'grid', 'stars', 'plasma', 'tunnel', 'matrix', 'gradient-wave', 'hexagons', 'kaleidoscope', 'dna',
+    'nebula', 'fire', 'circuit', 'rain'
 ];
 
 interface KeyframeEditorProps {
@@ -676,7 +681,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                                         <SelectInput 
                                             label="Active" 
                                             value={style.animation?.active || config.animation.active} 
-                                            options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
+                                            options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake', 'bass-bulge', 'stretch-vertical', 'orbit-spin', 'blur-pulse', 'chromatic-beat']} 
                                             onChange={(v) => {
                                                 const currentAnim = style.animation || {};
                                                 updateSectionStyle(key, 'animation', { ...currentAnim, active: v });
@@ -811,11 +816,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                              {config.background.type === 'procedural' ? (
                                 <>
                                     <ColorInput label="Base Color" value={config.background.color} onChange={(v) => updateNested('background', 'color', v)} />
-                                    <SelectInput 
-                                        label="Style" 
-                                        value={config.background.proceduralStyle || 'grid'} 
-                                        options={['grid', 'stars', 'plasma', 'tunnel', 'matrix', 'gradient-wave', 'hexagons', 'kaleidoscope', 'dna']} 
-                                        onChange={(v) => updateNested('background', 'proceduralStyle', v)} 
+                                    
+                                    {/* Updated to MultiToggle for Procedural Styles */}
+                                    <MultiToggleInput 
+                                        label="Active Layers" 
+                                        values={Array.isArray(config.background.proceduralStyle) ? config.background.proceduralStyle : (config.background.proceduralStyle ? [config.background.proceduralStyle] : [])} 
+                                        options={PROCEDURAL_STYLE_OPTIONS} 
+                                        onChange={(v) => updateNested('background', 'proceduralStyle', v as ProceduralStyle[])} 
                                     />
                                 </>
                              ) : (
@@ -948,7 +955,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 <SelectInput 
                    label="Active" 
                    value={config.animation.active} 
-                   options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake']} 
+                   options={['random', 'pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake', 'bass-bulge', 'stretch-vertical', 'orbit-spin', 'blur-pulse', 'chromatic-beat']} 
                    onChange={(v) => updateNested('animation', 'active', v)} 
                 />
                 <SelectInput 

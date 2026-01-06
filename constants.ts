@@ -37,22 +37,82 @@ const DEFAULT_SECTION_STYLES = {
 
 export const TEMPLATES: RendererConfig[] = [
   {
+    id: 'ethereal-nebula',
+    name: 'Ethereal Nebula',
+    showLyrics: true,
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#0f172a', proceduralStyle: ['stars', 'nebula'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#e2e8f0', active: '#38bdf8', secondary: '#818cf8' },
+    font: { family: 'Montserrat', weight: '900', italic: false, fontSize: 80 },
+    animation: { entrance: 'blur', active: 'orbit-spin', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
+    effects: { 
+      glow: 0.8, blur: false, chromaticAberration: false, vignette: true, scanlines: false, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 80, speed: 0.5, shape: 'circle', color: ['#38bdf8', '#ffffff'], particleBehavior: 'drift' },
+    camera: { shake: false, zoomBeat: true, rotate: true, sway: true, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'cyber-circuit',
+    name: 'Cyber Circuit',
+    showLyrics: true,
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#000000', proceduralStyle: ['grid', 'circuit', 'matrix'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#00ff00', active: '#ffffff', secondary: '#003300' },
+    font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 50 },
+    animation: { entrance: 'typewriter', active: 'glitch-shake', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'spectrum' },
+    effects: { 
+      glow: 0.5, blur: false, chromaticAberration: true, vignette: true, scanlines: true, 
+      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+    },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'bass-inferno',
+    name: 'Bass Inferno',
+    showLyrics: true,
+    resolutionId: '16:9',
+    background: { type: 'procedural', color: '#1a0500', proceduralStyle: ['fire', 'tunnel'], intensity: 1.0, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    colors: { text: '#ffcc00', active: '#ff4400', secondary: '#ff0000' },
+    font: { family: 'Anton', weight: '900', italic: false, fontSize: 90 },
+    animation: { entrance: 'slam', active: 'bass-bulge', exit: 'burn' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
+    effects: { 
+      glow: 0.6, blur: false, chromaticAberration: true, vignette: true, scanlines: false, 
+      filmGrain: true, mirror: false, invert: true, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 50, speed: 2.5, shape: 'triangle', color: ['#ff4400', '#ffcc00'], particleBehavior: 'rise' },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
     id: 'happy-tetris-rain',
     name: 'Happy Tetris Rain',
     showLyrics: true,
     resolutionId: '16:9',
     background: {
-      type: 'solid', // User should upload "Migna" image here, defaulting to solid for now
+      type: 'solid',
       color: '#1a1a1a', 
       playbackSpeed: 1.0,
-      imageEffects: ['bright-happy'], // New effect: Brillo +10%, Saturation +20%
+      imageEffects: ['bright-happy'],
       imageEffectSpeed: 1.0,
       intensity: 1.0
     },
     colors: {
       text: '#ffffff',
-      active: '#FFFF00', // Bright Yellow
-      secondary: '#FF00FF' // Magenta
+      active: '#FFFF00',
+      secondary: '#FF00FF'
     },
     font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 60 },
     animation: {
@@ -85,16 +145,10 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: {
       enabled: true,
-      count: 30, // Reduced count because they are larger now
+      count: 30,
       speed: 1.5,
-      shape: 'tetris', // NEW SHAPE
-      color: [
-        '#00FFFF', // Cyan
-        '#FFFF00', // Bright Yellow
-        '#FF00FF', // Magenta
-        '#32CD32', // Lime Green
-        '#FFA500'  // Orange
-      ],
+      shape: 'tetris',
+      color: ['#00FFFF', '#FFFF00', '#FF00FF', '#32CD32', '#FFA500'],
       particleBehavior: 'drift'
     },
     camera: {
@@ -110,169 +164,11 @@ export const TEMPLATES: RendererConfig[] = [
     keyframes: []
   },
   {
-    id: 'kinetic-mix',
-    name: 'Kinetic Mix',
-    showLyrics: true,
-    resolutionId: '16:9',
-    background: {
-      type: 'solid',
-      color: '#000000',
-      playbackSpeed: 1.0,
-      imageEffects: [],
-      imageEffectSpeed: 1.0
-    },
-    colors: {
-      text: '#ffffff',
-      active: '#00ff00',
-      secondary: '#333333'
-    },
-    font: { family: 'Anton', weight: '900', italic: false, fontSize: 90 },
-    animation: {
-      entrance: 'random', // Dynamic randomness
-      active: 'random', // Dynamic randomness
-      exit: 'fade'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.2,
-      visualizerStyle: 'none'
-    },
-    effects: {
-      glow: 0.0,
-      blur: false,
-      chromaticAberration: true,
-      vignette: false,
-      scanlines: false,
-      filmGrain: true,
-      mirror: false,
-      invert: true,
-      barrelDistortion: false,
-      mosaic: false,
-      sepia: false,
-      grayscale: true,
-      halftone: false,
-      oldMovie: false,
-      kaleidoscope: false,
-      rgbSplit: false
-    },
-    particles: {
-      enabled: false,
-      count: 0,
-      speed: 0,
-      shape: 'circle',
-      color: [],
-      particleBehavior: 'drift'
-    },
-    camera: {
-      shake: true,
-      zoomBeat: true,
-      rotate: false,
-      sway: false,
-      hardKick: true,
-      panic: false,
-      screenPump: true
-    },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'neon-night',
-    name: 'Neon Night',
-    showLyrics: true,
-    resolutionId: '16:9',
-    background: {
-      type: 'solid',
-      color: '#0a0a0a',
-      playbackSpeed: 1.0,
-      imageEffects: [],
-      imageEffectSpeed: 1.0
-    },
-    colors: {
-      text: '#e0e0e0', // Bright white-grey for legibility
-      active: '#00ffff', // Cyan
-      secondary: '#a855f7' // Purple
-    },
-    font: { family: 'Montserrat', weight: '900', italic: false, fontSize: 80 },
-    animation: {
-      entrance: 'slide',
-      active: 'neon',
-      exit: 'fade'
-    },
-    audioReactivity: {
-      enabled: true,
-      sensitivity: 1.0,
-      visualizerStyle: 'spectrum'
-    },
-    effects: {
-      glow: 0.8,
-      blur: true,
-      chromaticAberration: true,
-      vignette: true,
-      scanlines: false, // Disabled for clarity
-      filmGrain: true, // Subtle grain
-      mirror: false,
-      invert: false,
-      barrelDistortion: false,
-      mosaic: false,
-      sepia: false,
-      grayscale: false,
-      halftone: false,
-      oldMovie: false,
-      kaleidoscope: false,
-      rgbSplit: true
-    },
-    particles: {
-      enabled: true,
-      count: 100,
-      speed: 1.0,
-      shape: 'circle',
-      color: ['#00ffff', '#a855f7', '#ffffff'],
-      particleBehavior: 'drift'
-    },
-    camera: {
-      shake: true,
-      zoomBeat: true,
-      rotate: true,
-      sway: false,
-      hardKick: false,
-      panic: false,
-      screenPump: false
-    },
-    sectionStyles: {
-       verse: { enabled: false },
-       chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.3, camera_zoom_boost: 0.2 },
-       bridge: { enabled: true, colors_active: '#ffff00', effects_glow_boost: 0.1 },
-       intro: { enabled: false },
-       outro: { enabled: false }
-    },
-    keyframes: []
-  },
-  {
-    id: 'cyber-punk',
-    name: 'Cyber Punk',
-    showLyrics: true,
-    resolutionId: '16:9',
-    background: { type: 'solid', color: '#050505', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#fee02f', active: '#00f0ff', secondary: '#ff003c' },
-    font: { family: 'Oswald', weight: '700', italic: true, fontSize: 85 },
-    animation: { entrance: 'glitch', active: 'glitch-shake', exit: 'slam' },
-    audioReactivity: { enabled: true, sensitivity: 1.3, visualizerStyle: 'shockwave' },
-    effects: { 
-      glow: 0.6, blur: false, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
-    },
-    particles: { enabled: true, count: 40, speed: 4, shape: 'triangle', color: ['#fee02f', '#00f0ff', '#ff003c'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
     id: 'dreamscape',
     name: 'Dreamscape',
     showLyrics: true,
     resolutionId: '16:9',
-    background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: 'stars', intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
+    background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: ['stars'], intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#e2e8f0', active: '#c4b5fd', secondary: '#818cf8' },
     font: { family: 'Playfair Display', weight: '700', italic: true, fontSize: 75 },
     animation: { entrance: 'blur', active: 'float', exit: 'fade' },
@@ -284,46 +180,6 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: { enabled: true, count: 150, speed: 0.2, shape: 'circle', color: ['#c4b5fd', '#ffffff'], particleBehavior: 'rise' },
     camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'vhs-horror',
-    name: 'VHS Horror',
-    showLyrics: true,
-    resolutionId: '16:9',
-    background: { type: 'solid', color: '#020202', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#d4d4d4', active: '#ff0000', secondary: '#520000' }, // Improved contrast
-    font: { family: 'Cinzel', weight: '700', italic: false, fontSize: 80 },
-    animation: { entrance: 'typewriter', active: 'shiver', exit: 'burn' },
-    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'none' },
-    effects: { 
-      glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: false, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'retro-arcade',
-    name: 'Retro Arcade',
-    showLyrics: true,
-    resolutionId: '1:1',
-    background: { type: 'solid', color: '#111111', playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#33ff00', active: '#ff00ff', secondary: '#00ffff' },
-    font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 60 },
-    animation: { entrance: 'typewriter', active: 'flash', exit: 'glitch' },
-    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
-    effects: {
-      glow: 0.4, blur: false, chromaticAberration: true, vignette: false, scanlines: true,
-      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: true,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: true, count: 50, speed: 2.0, shape: 'square', color: ['#33ff00', '#ff00ff'], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },

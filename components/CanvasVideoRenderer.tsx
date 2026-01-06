@@ -1,7 +1,5 @@
-
-
 import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect, AnimationStyle, ActiveStyle } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, ParticleShape, AnimationKeyframe, SectionType, ImageEffect, AnimationStyle, ActiveStyle, ProceduralStyle } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
@@ -35,12 +33,14 @@ interface Particle {
 }
 
 interface Shockwave {
-    id: number;
-    x: number;
-    y: number;
-    radius: number;
-    alpha: number;
-    color: string;
+  id: number;
+  x: number;
+  y: number;
+  radius: number;
+  maxRadius: number;
+  alpha: number;
+  color: string;
+  speed: number;
 }
 
 // Math Helpers
@@ -103,7 +103,7 @@ const getDeterministicRandom = (seed: number) => {
 // Helper: Pick random animation
 const getRandomAnimation = (seed: number, type: 'entrance' | 'active'): string => {
     const entranceOptions: AnimationStyle[] = ['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate'];
-    const activeOptions: ActiveStyle[] = ['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake'];
+    const activeOptions: ActiveStyle[] = ['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake', 'bass-bulge', 'stretch-vertical', 'orbit-spin', 'blur-pulse', 'chromatic-beat'];
     
     if (type === 'entrance') {
         const idx = Math.floor(getDeterministicRandom(seed) * entranceOptions.length);
@@ -213,6 +213,156 @@ const drawStars = (ctx: CanvasRenderingContext2D, time: number, color: string, s
              ctx.arc(sx, sy, size, 0, Math.PI * 2);
              ctx.fill();
         }
+    }
+    ctx.restore();
+};
+
+const drawNebula = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    
+    const count = 6;
+    const drift = time * speed * 0.2;
+    
+    for(let i=0; i<count; i++) {
+        const noiseX = Math.sin(i * 1.5 + drift) * (w * 0.4);
+        const noiseY = Math.cos(i * 1.2 + drift) * (h * 0.4);
+        
+        const x = (w / 2) + noiseX;
+        const y = (h / 2) + noiseY;
+        const radius = (w * 0.4) + (audio.bass * w * 0.2);
+        
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        
+        // Vary color slightly per cloud
+        let activeColor = color;
+        if (i % 2 === 0 && audio.bass > 0.5) {
+            // Pulse lighter on bass
+            activeColor = '#ffffff'; 
+        }
+        
+        grad.addColorStop(0, activeColor);
+        grad.addColorStop(0.6, 'rgba(0,0,0,0)');
+        
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.15 + (audio.mid * 0.1);
+        ctx.fillRect(0, 0, w, h);
+    }
+    ctx.restore();
+};
+
+const drawFire = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    
+    const particlesCount = 80;
+    const fireHeight = h * 0.8;
+    
+    for(let i=0; i<particlesCount; i++) {
+        // Deterministic particle simulation based on time
+        const lifeCycle = 2.0; // Seconds to rise
+        const seed = i * 135.2;
+        const offset = (time * speed + seed) % lifeCycle;
+        const progress = offset / lifeCycle; // 0 to 1
+        
+        const spread = (w * 0.8) * (1 - progress * 0.5); // Taper at top
+        const xBase = w / 2 + (Math.sin(seed + time) * spread * 0.5);
+        
+        const y = h - (progress * fireHeight);
+        const size = (w * 0.05) * (1 - progress);
+        
+        // Wiggle
+        const wiggle = Math.sin(progress * 10 + time * 5) * (w * 0.05);
+        const x = xBase + wiggle;
+
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, size);
+        
+        // Color transition: White -> Yellow -> Red -> Dark
+        // Base color mixed with heat
+        const r = 255;
+        const g = Math.floor(255 * (1 - progress));
+        const b = Math.floor(50 * (1 - progress));
+        const fireColor = `rgba(${r}, ${g}, ${b}, ${1 - progress})`;
+        
+        grad.addColorStop(0, fireColor);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.5 + (audio.bass * 0.5);
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+};
+
+const drawCircuit = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    
+    const cols = 10;
+    const rows = 10;
+    const cellW = w / cols;
+    const cellH = h / rows;
+    
+    for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+            const seed = i * 13 + j * 71;
+            // Activate random cells based on time and audio
+            const active = Math.sin(time * speed + seed) > 0.8 - (audio.mid * 0.4);
+            
+            if (active) {
+                const cx = i * cellW + cellW/2;
+                const cy = j * cellH + cellH/2;
+                
+                ctx.beginPath();
+                ctx.arc(cx, cy, 4 + audio.bass * 4, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.8;
+                ctx.fill();
+                
+                // Draw lines to neighbors
+                if (i < cols - 1 && Math.sin(seed * 2) > 0) {
+                     ctx.beginPath();
+                     ctx.moveTo(cx, cy);
+                     ctx.lineTo(cx + cellW, cy);
+                     ctx.globalAlpha = 0.3;
+                     ctx.stroke();
+                }
+                if (j < rows - 1 && Math.cos(seed * 3) > 0) {
+                     ctx.beginPath();
+                     ctx.moveTo(cx, cy);
+                     ctx.lineTo(cx, cy + cellH);
+                     ctx.globalAlpha = 0.3;
+                     ctx.stroke();
+                }
+            }
+        }
+    }
+    ctx.restore();
+};
+
+const drawRain = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    
+    const count = 100;
+    const fallSpeed = 500 * speed * (1 + audio.bass);
+    
+    for(let i=0; i<count; i++) {
+        const x = (i * 373.1) % w;
+        const offset = (i * 91.3);
+        const y = (time * fallSpeed + offset) % h;
+        const len = 20 + (audio.mid * 50);
+        
+        ctx.globalAlpha = 0.3 + (Math.sin(time + i) * 0.2);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + len);
+        ctx.stroke();
     }
     ctx.restore();
 };
@@ -517,43 +667,6 @@ const drawNote = (ctx: CanvasRenderingContext2D, x: number, y: number, size: num
     ctx.fillText('♪', x, y);
 }
 
-const drawAlertIcon = (ctx: CanvasRenderingContext2D, w: number, h: number, time: number, bass: number) => {
-    const size = Math.min(w, h) * 0.4;
-    const cx = w / 2;
-    const cy = h / 2;
-    
-    const pulse = 1 + (Math.sin(time * 15) * 0.1) + (bass * 0.1);
-    
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.scale(pulse, pulse);
-    
-    ctx.beginPath();
-    ctx.moveTo(0, -size/2);
-    ctx.lineTo(size/2, size/2);
-    ctx.lineTo(-size/2, size/2);
-    ctx.closePath();
-    
-    ctx.shadowBlur = 40 + (bass * 40);
-    ctx.shadowColor = '#ff0000';
-    
-    ctx.fillStyle = 'rgba(50, 0, 0, 0.8)';
-    ctx.fill();
-    
-    ctx.lineWidth = 15;
-    ctx.strokeStyle = '#ff0000';
-    ctx.stroke();
-    
-    ctx.fillStyle = '#ff0000';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `bold ${size * 0.6}px Arial`;
-    ctx.shadowBlur = 0;
-    ctx.fillText('!', 0, size * 0.1);
-    
-    ctx.restore();
-};
-
 export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVideoRendererProps>(({
   data,
   config,
@@ -576,6 +689,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       lastEndTime: -10 // Start with a state that allows immediate trigger
   });
   
+  // Track visual intensity of the glitch for global effects (e.g. RGB split on text)
+  const vhsGlobalIntensity = useRef(0);
+
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -658,25 +774,20 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const newParticles: Particle[] = [];
         for (let i = 0; i < pCount; i++) {
             const maxLife = (Math.random() * 5) + 3;
-            // Configurable size based on shape
             const isTetris = config.particles.shape === 'tetris';
-            
             const newSpeed = config.particles.speed * ((Math.random() * 1) + 0.5);
             
             newParticles.push({
                 id: i,
                 x: Math.random() * CANVAS_WIDTH,
                 y: Math.random() * CANVAS_HEIGHT,
-                // Tetris: Fall straight down (vx=0, vy>0), others random drift
                 vx: isTetris ? 0 : (Math.random() - 0.5) * config.particles.speed * 2,
                 vy: isTetris ? (Math.random() * 2 + 3) * config.particles.speed : (Math.random() - 0.5) * config.particles.speed * 2,
                 speed: newSpeed,
-                // Tetris: Much larger (20-50), others small (2-6)
                 size: isTetris ? (Math.random() * 30) + 20 : (Math.random() * 4) + 2,
                 color: config.particles.color[Math.floor(Math.random() * config.particles.color.length)] || '#fff',
                 alpha: Math.random() * 0.5 + 0.2,
                 phase: Math.random() * Math.PI * 2,
-                // Tetris Random Rotation: 0, 90, 180, 270 (0, PI/2, PI, 1.5PI)
                 angle: isTetris ? (Math.floor(Math.random() * 4) * (Math.PI / 2)) : Math.random() * Math.PI * 2, 
                 life: Math.random() * maxLife,
                 maxLife: maxLife,
@@ -733,6 +844,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     const dt = time - lastTimeRef.current;
     lastTimeRef.current = time;
     const safeDt = Math.abs(dt) > 1.0 ? 0.016 : dt; 
+
+    // Reset global glitch intensity tracker for this frame
+    vhsGlobalIntensity.current = 0;
 
     // --- EFFECTIVE CONFIG RESOLUTION ---
     let effectiveColorsActive = config.colors.active;
@@ -864,7 +978,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                  ctx.scale(-1, 1);
              }
 
-             // --- REACTIVE VHS GLITCH LOGIC ---
+             // --- REACTIVE VHS GLITCH LOGIC (DETERMINISTIC & EXPORT SAFE) ---
              if (hasVhsStripes) {
                  // Calculate time since last animation ENDED
                  const timeSinceLastEnd = time - vhsGlitchState.current.lastEndTime;
@@ -895,16 +1009,24 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                              const blurProgress = (elapsed - 0.2) / blurDuration;
                              
                              // Blur starts high (20px) and goes to 0
-                             const blurAmount = (1 - blurProgress) * 20;
+                             // Use COSINE ease for smoother cinematic blur transition instead of linear
+                             const smoothBlur = (Math.cos(blurProgress * Math.PI) + 1) / 2; // 1 to 0 smooth
+                             const blurAmount = smoothBlur * 15;
+
                              if (blurAmount > 0.5) {
                                 ctx.filter = `blur(${blurAmount}px)`;
                              }
+
+                             // Set global intensity for Layer 5 (Text) to pick up
+                             // We want text to split RGB when background is blurry/glitching
+                             vhsGlobalIntensity.current = smoothBlur;
                          }
                      } else {
                          // Reset and mark end time for cooldown
                          vhsGlitchState.current.active = false;
                          vhsGlitchState.current.lastEndTime = time;
                          ctx.filter = 'none';
+                         vhsGlobalIntensity.current = 0;
                      }
                  }
              }
@@ -942,9 +1064,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                  for (let i = 0; i < slices; i++) {
                      const sy = i * sliceH;
                      let dxOffset = 0;
-                     // Random drift occasionally
-                     if (Math.random() > 0.9 - (bass * 0.2)) {
-                         dxOffset = (Math.random() - 0.5) * (100 * speedScalar);
+                     // Random drift occasionally (DETERMINISTIC NOISE)
+                     if (Math.sin(time * 55.5 + i) > 0.9 - (bass * 0.2)) {
+                         dxOffset = (Math.sin(time * 99.9) - 0.5) * (100 * speedScalar);
                      }
                      // Wave drift
                      dxOffset += Math.sin((i * 0.2) + (time * 5)) * 10;
@@ -1002,7 +1124,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                  const stripeTime = time * speedScalar;
                  ctx.save();
                  
-                 // 1. Static Noise Bar (Tracking) - Always present but subtle
+                 // 1. Static Noise Bar (Tracking) - Deterministic movement
                  const trackingY = (stripeTime * 100) % (CANVAS_HEIGHT * 1.5) - (CANVAS_HEIGHT * 0.25);
                  const trackingHeight = CANVAS_HEIGHT * 0.15;
                  
@@ -1014,10 +1136,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                      ctx.fillRect(0, trackingY, CANVAS_WIDTH, trackingHeight);
                  }
 
-                 // 2. Thick Uniform Stripes
+                 // 2. Thick Uniform Stripes - DETERMINISTIC RENDERING (No Random)
+                 // This ensures export looks clean and lines don't jitter randomly between frames
                  ctx.globalCompositeOperation = 'color-dodge'; 
                  const numStripes = 6;
-                 // Uniform speed for all lines
                  const baseSpeed = 500 * speedScalar;
                  
                  for(let i=0; i<numStripes; i++) {
@@ -1025,8 +1147,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                      const spacing = CANVAS_HEIGHT / (numStripes * 0.5);
                      // Uniform movement
                      const y = (stripeTime * baseSpeed + (i * spacing)) % CANVAS_HEIGHT;
-                     // Thicker lines (10px - 30px)
-                     const h = 10 + Math.random() * 20;
+                     
+                     // Deterministic height variation based on time and index
+                     // Using SIN instead of Random ensures smooth transformation during export
+                     const h = 15 + Math.sin(i * 132.5 + stripeTime * 5) * 10;
                      
                      // Alternating VHS colors
                      const color = i % 3 === 0 ? '#00ffff' : (i % 3 === 1 ? '#ff00ff' : '#ffff00');
@@ -1037,9 +1161,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                      // Draw stripe
                      ctx.fillRect(0, y, CANVAS_WIDTH, h);
                      
-                     // Minimal ghosting for these thick lines to keep them distinct
+                     // Deterministic "ghosting" offset
+                     const ghostOffset = 5 + Math.sin(stripeTime * 10) * 2;
                      ctx.globalAlpha = 0.2;
-                     ctx.fillRect(5, y - 5, CANVAS_WIDTH, h);
+                     ctx.fillRect(ghostOffset, y - 5, CANVAS_WIDTH, h);
                  }
                  
                  ctx.restore();
@@ -1077,18 +1202,29 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             drawMedia(vid, true);
         } else if (config.background.type === 'procedural') {
             const speed = config.background.intensity || 0.5;
-            const style = config.background.proceduralStyle || 'grid';
             const audioData = { bass, mid, high, raw };
             
-            if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'gradient-wave') drawGradientWave(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-            if (style === 'dna') drawDNA(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            // Support for Multiple Stacking Procedural Layers
+            const styles: ProceduralStyle[] = Array.isArray(config.background.proceduralStyle) 
+                ? config.background.proceduralStyle 
+                : (config.background.proceduralStyle ? [config.background.proceduralStyle] : ['grid']);
+
+            styles.forEach(style => {
+                if (style === 'grid') drawGrid(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'gradient-wave') drawGradientWave(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'dna') drawDNA(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                // New styles
+                if (style === 'nebula') drawNebula(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'fire') drawFire(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'circuit') drawCircuit(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'rain') drawRain(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            });
         }
         
         // Global Overlay Gradient (Behind text)
@@ -1361,7 +1497,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                   const finalActive = activeAnimationActive === 'random' ? getRandomAnimation(seed, 'active') : activeAnimationActive;
                   
                   let alpha = 1.0;
-                  let scale = 1.0;
+                  let scaleX = 1.0;
+                  let scaleY = 1.0;
                   let blur = 0;
                   let offsetY = 0;
                   let offsetX = 0;
@@ -1377,42 +1514,68 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                           if (finalEntrance === 'stack-pop') {
                               if (dist < 0.2) {
                                   const popT = 1 - (dist / 0.2);
-                                  scale = easeOutBack(popT);
-                              } else { scale = 0; }
+                                  scaleX = scaleY = easeOutBack(popT);
+                              } else { scaleX = scaleY = 0; }
                           } else if (finalEntrance === 'slide') { offsetY = (1 - t) * 50;
-                          } else if (finalEntrance === 'slam') { scale = 2.0 - t;
-                          } else if (finalEntrance === 'zoom') { scale = t;
-                          } else if (finalEntrance === 'spin') { rotation = (1 - t) * Math.PI; scale = t;
+                          } else if (finalEntrance === 'slam') { scaleX = scaleY = 2.0 - t;
+                          } else if (finalEntrance === 'zoom') { scaleX = scaleY = t;
+                          } else if (finalEntrance === 'spin') { rotation = (1 - t) * Math.PI; scaleX = scaleY = t;
                           } else if (finalEntrance === 'blur') { blur = (1 - t) * 10;
                           } else if (finalEntrance === 'glitch') {
                               if (Math.random() > t) offsetX = (Math.random() - 0.5) * 20;
-                          } else if (finalEntrance === 'elastic') { scale = easeOutElastic(t);
+                          } else if (finalEntrance === 'elastic') { scaleX = scaleY = easeOutElastic(t);
                           } else if (finalEntrance === 'drop') { offsetY = (1 - t) * -200;
-                          } else if (finalEntrance === 'spiral') { rotation = (1-t) * Math.PI * 2; scale = t * 0.1;
-                          } else if (finalEntrance === 'inflate') { scale = 0.5 + (t * 0.5); offsetY = (1-t) * 20;
+                          } else if (finalEntrance === 'spiral') { rotation = (1-t) * Math.PI * 2; scaleX = scaleY = t * 0.1;
+                          } else if (finalEntrance === 'inflate') { scaleX = scaleY = 0.5 + (t * 0.5); offsetY = (1-t) * 20;
                           }
                       } else { alpha = 0; }
                   } else if (isWordActive) {
                       color = currentEffectiveColorsActive;
-                      scale = 1.1; 
+                      scaleX = scaleY = 1.1; 
 
                       if (finalActive === 'glitch-shake') {
                           offsetX = (Math.random() - 0.5) * (10 + high * 20);
                           offsetY = (Math.random() - 0.5) * (10 + high * 20);
                           rotation = (Math.random() - 0.5) * 0.05;
-                      } else if (finalActive === 'pulse') { scale += Math.sin(time * 10) * 0.05 + (bass * 0.1);
+                      } else if (finalActive === 'pulse') { 
+                          const pulseAmt = Math.sin(time * 10) * 0.05 + (bass * 0.1);
+                          scaleX += pulseAmt; scaleY += pulseAmt;
                       } else if (finalActive === 'jitter') { offsetX = (Math.random() - 0.5) * 5; offsetY = (Math.random() - 0.5) * 5;
                       } else if (finalActive === 'bounce') { offsetY = Math.sin(time * 15) * 10;
                       } else if (finalActive === 'wave') { offsetY = Math.sin(time * 5 + centerX * 0.01) * 10;
                       } else if (finalActive === 'rotate') { rotation = Math.sin(time * 3) * 0.1;
-                      } else if (finalActive === 'pop') { if (bass > 0.6) scale = 1.4;
+                      } else if (finalActive === 'pop') { if (bass > 0.6) scaleX = scaleY = 1.4;
                       } else if (finalActive === 'flash') { if (Math.sin(time * 20) > 0) alpha = 0.5;
                       } else if (finalActive === 'float') { offsetY = Math.sin(time * 2) * 5; rotation = Math.sin(time * 1.5) * 0.02;
                       } else if (finalActive === 'shiver') { rotation = (Math.random() - 0.5) * 0.1;
                       } else if (finalActive === 'heartbeat') {
                           const beat = (time * 2) % 1;
-                          if (beat < 0.2) scale = 1.3; else if (beat > 0.3 && beat < 0.4) scale = 1.2;
+                          if (beat < 0.2) scaleX = scaleY = 1.3; else if (beat > 0.3 && beat < 0.4) scaleX = scaleY = 1.2;
                       } else if (finalActive === 'swing') { rotation = Math.sin(time * 4) * 0.1; offsetY = Math.abs(Math.sin(time * 4)) * 5;
+                      } 
+                      // --- NEW AUDIO REACTIVE STYLES ---
+                      else if (finalActive === 'bass-bulge') {
+                          // Aggressive swell on bass
+                          const bulge = bass * 0.8;
+                          scaleX += bulge;
+                          scaleY += bulge;
+                      } else if (finalActive === 'stretch-vertical') {
+                          // Soundbar effect: Taller on mids/highs, thinner width
+                          scaleY += (mid * 1.5) + (high * 0.5);
+                          scaleX = Math.max(0.6, scaleX - (mid * 0.3));
+                          offsetY -= mid * 20; // Anchor bottom roughly by moving up
+                      } else if (finalActive === 'orbit-spin') {
+                          // Rotation oscillates, intensity driven by bass
+                          rotation = Math.sin(time * 3) * (0.2 + (bass * 0.8));
+                      } else if (finalActive === 'blur-pulse') {
+                          // Blur beats
+                          blur = bass * 15;
+                          scaleX += bass * 0.2;
+                          scaleY += bass * 0.2;
+                      } else if (finalActive === 'chromatic-beat') {
+                          // Scale reacts to kick, effect logic handled in drawing
+                          scaleX += bass * 0.3;
+                          scaleY += bass * 0.3;
                       }
                   } else if (isPast) {
                       color = currentEffectiveColorsText;
@@ -1421,8 +1584,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                           const t = dist / 0.5;
                           alpha = 1 - t;
                           if (activeAnimationExit === 'slide') offsetY = t * -50;
-                          else if (activeAnimationExit === 'slam') scale = 1.0 + t;
-                          else if (activeAnimationExit === 'zoom') scale = 1.0 - t;
+                          else if (activeAnimationExit === 'slam') scaleX = scaleY = 1.0 + t;
+                          else if (activeAnimationExit === 'zoom') scaleX = scaleY = 1.0 - t;
                           else if (activeAnimationExit === 'blur') blur = t * 20;
                       } else {
                           if (isActiveSegment) { alpha = 0.3; blur = 1; } 
@@ -1434,7 +1597,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                       ctx.save();
                       ctx.translate(centerX + offsetX, centerY + offsetY);
                       ctx.rotate(rotation);
-                      ctx.scale(scale, scale);
+                      ctx.scale(scaleX, scaleY);
 
                       if (blur > 0) ctx.filter = `blur(${blur}px)`;
                       ctx.globalAlpha = alpha;
@@ -1456,18 +1619,36 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                           textToDraw = w.word.split('').map(c => Math.random() > 0.5 ? getRandomChar() : c).join('');
                       }
 
-                      ctx.fillStyle = color;
-                      if (isWordActive && finalActive === 'rainbow') {
-                          const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
-                          grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
-                          grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
-                          ctx.fillStyle = grad;
+                      // Chromatic Beat specialized rendering
+                      if (isWordActive && finalActive === 'chromatic-beat') {
+                          const shift = 4 + (bass * 20) + (high * 10);
+                          ctx.globalCompositeOperation = 'screen';
+                          ctx.fillStyle = '#ff0000';
+                          ctx.fillText(textToDraw, -wordWidth / 2 - shift, 0);
+                          
+                          ctx.fillStyle = '#00ff00';
+                          ctx.fillText(textToDraw, -wordWidth / 2, 0);
+                          
+                          ctx.fillStyle = '#0000ff';
+                          ctx.fillText(textToDraw, -wordWidth / 2 + shift, 0);
+                      } else {
+                          // Standard Fill
+                          ctx.fillStyle = color;
+                          if (isWordActive && finalActive === 'rainbow') {
+                              const grad = ctx.createLinearGradient(-wordWidth/2, 0, wordWidth/2, 0);
+                              grad.addColorStop(0, '#ff0000'); grad.addColorStop(0.2, '#ffff00'); grad.addColorStop(0.4, '#00ff00');
+                              grad.addColorStop(0.6, '#00ffff'); grad.addColorStop(0.8, '#0000ff'); grad.addColorStop(1, '#ff00ff');
+                              ctx.fillStyle = grad;
+                          }
+                          ctx.fillText(textToDraw, -wordWidth / 2, 0);
                       }
-
-                      ctx.fillText(textToDraw, -wordWidth / 2, 0);
                       
-                      if (isWordActive && finalActive === 'glitch-shake') {
-                          const glitchShift = 5 + high * 10;
+                      // Glitch Shake OR Global VHS Glitch Integration
+                      if ((isWordActive && finalActive === 'glitch-shake') || vhsGlobalIntensity.current > 0) {
+                          // If global VHS intensity is high, force text glitch even if not active word style
+                          const vhsFactor = vhsGlobalIntensity.current * 10; 
+                          const glitchShift = (5 + high * 10) + vhsFactor;
+                          
                           ctx.globalCompositeOperation = 'lighter';
                           ctx.fillStyle = '#ff00ff';
                           ctx.fillText(textToDraw, -wordWidth/2 - glitchShift, 0);
@@ -1488,10 +1669,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // ===========================
     // LAYER 5: FINAL COMPOSITION (Chromatic Aberration affects everything)
     // ===========================
-    if (config.effects.chromaticAberration || config.effects.rgbSplit) {
+    let globalRgbShift = config.effects.rgbSplit ? 5 : 0;
+    
+    // INTEGRATION: Add VHS Glitch Intensity to Global RGB Split
+    if (vhsGlobalIntensity.current > 0) {
+        globalRgbShift += vhsGlobalIntensity.current * 20; // Significant split during glitch
+    }
+
+    if (config.effects.chromaticAberration || globalRgbShift > 0) {
         const caShift = config.effects.chromaticAberration ? 2 + mid * 20 * sensitivity : 0;
-        const rgbShift = config.effects.rgbSplit ? 5 : 0;
-        const totalShift = Math.max(caShift, rgbShift);
+        const totalShift = Math.max(caShift, globalRgbShift);
+        
         if (totalShift > 0.1) {
             ctx.save();
             ctx.globalCompositeOperation = 'lighter';
