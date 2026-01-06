@@ -404,42 +404,73 @@ const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, 
     ctx.restore();
 }
 
+// drawMatrix 
 const drawMatrix = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
     ctx.save();
-    ctx.fillStyle = color;
     
-    const fontSize = Math.floor(w / 40); 
-    ctx.font = `${fontSize}px monospace`;
+    // 1. Caracteres MÁS GRANDES (w / 25 en lugar de w / 50)
+    const fontSize = Math.floor(w / 25); 
+    ctx.font = `bold ${fontSize}px monospace`;
     const columns = Math.ceil(w / fontSize);
     
+    const baseSpeed = speed * 250; 
+
     for(let i=0; i<columns; i++) {
-        const randomFactor = Math.abs(Math.sin(i * 123.45));
-        const colSpeed = (randomFactor * 0.5 + 1.0) * speed * 250; 
-        const offset = Math.cos(i * 67.89) * h;
-        
-        let y = (time * colSpeed + offset) % (h + 300);
-        if (y < 0) y += h + 300;
-        y -= 300; 
-        
+        const randomSeed = Math.abs(Math.sin(i * 123.45)); 
+        const colSpeed = baseSpeed * (0.8 + randomSeed * 0.5); 
+        const offset = randomSeed * h * 5; 
+
+        let headY = (time * colSpeed + offset) % (h + 500);
+        headY -= 200; 
+
         if (audio.bass > 0.8 && Math.random() > 0.9) {
-            y += (Math.random() - 0.5) * 50;
+            headY += (Math.random() - 0.5) * 50;
         }
 
-        const charCount = 8 + Math.floor(randomFactor * 6);
-        
-        for(let j=0; j<charCount; j++) {
-            const charY = y - (j * fontSize);
-            if (charY > -fontSize && charY < h + fontSize) {
-                ctx.globalAlpha = (1 - (j / charCount)) * 0.7;
-                const charCode = 0x30A0 + ((Math.floor(time * i) + j) % 90); 
-                const char = String.fromCharCode(charCode);
-                ctx.fillText(char, i * fontSize, charY);
+        const trailLen = 12 + Math.floor(randomSeed * 8);
+
+        for(let j=0; j<trailLen; j++) {
+            const charY = headY - (j * fontSize);
+            if (charY < -fontSize || charY > h + fontSize) continue;
+
+            const alpha = 1 - (j / trailLen);
+            
+            // Lógica de Color mejorada
+            if (j === 0) {
+                // CABEZA: Blanca y brillante
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ffffff';
+                ctx.globalAlpha = 1;
+            } else {
+                // ESTELA: Transición de Color Activo -> Rojo
+                // Usamos lerpColor si está disponible, o lógica manual simple si no.
+                // Como lerpColor está en el archivo, lo usamos:
+                
+                // Progreso de la estela (0 = cerca cabeza, 1 = final cola)
+                const trailProgress = j / trailLen;
+                
+                // Mezcla: Empieza con el color del tema (ej. Cyan) y se vuelve Rojo (#ff0000) al bajar
+                const charColor = lerpColor(color, '#ff0000', trailProgress);
+
+                ctx.fillStyle = charColor;
+                
+                // LEVE GLOW (Resplandor)
+                // Más intenso arriba, menos abajo
+                ctx.shadowBlur = 8 * (1 - trailProgress); 
+                ctx.shadowColor = '#ff0000'; // El glow es rojo para dar atmósfera siniestra
+                ctx.globalAlpha = alpha; 
             }
+
+            // Cambio de caracteres
+            const charIndex = Math.floor(time * 5.0 + i + j * 0.2) % 90;
+            const char = String.fromCharCode(0x30A0 + charIndex); 
+
+            ctx.fillText(char, i * fontSize, charY);
         }
     }
     ctx.restore();
 }
-
 const drawGradientWave = (ctx: CanvasRenderingContext2D, time: number, color: string, accentColor: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
     ctx.save();
     const grad = ctx.createLinearGradient(0, 0, w, h);
@@ -1214,7 +1245,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 if (style === 'plasma') drawPlasma(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'stars') drawStars(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'tunnel') drawTunnel(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
-                if (style === 'matrix') drawMatrix(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'matrix') drawMatrix(ctx, time, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'gradient-wave') drawGradientWave(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'hexagons') drawHexagons(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'kaleidoscope') drawKaleidoscope(ctx, time, effectiveBgColor, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
