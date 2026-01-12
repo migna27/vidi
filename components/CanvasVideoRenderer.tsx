@@ -367,6 +367,99 @@ const drawRain = (ctx: CanvasRenderingContext2D, time: number, color: string, sp
     ctx.restore();
 };
 
+const drawDigitalHeartbeat = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
+    ctx.save();
+    
+    // 1. Cuadrícula de Monitor (Grid Médico)
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.15; // Muy sutil
+    
+    const gridSize = 50;
+    ctx.beginPath();
+    // Líneas verticales
+    for(let x = 0; x <= w; x += gridSize) { 
+        ctx.moveTo(x, 0); ctx.lineTo(x, h); 
+    }
+    // Líneas horizontales
+    for(let y = 0; y <= h; y += gridSize) { 
+        ctx.moveTo(0, y); ctx.lineTo(w, y); 
+    }
+    ctx.stroke();
+
+    // 2. Línea Central (Referencia)
+    const centerY = h / 2;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(w, centerY);
+    ctx.stroke();
+
+    // 3. Onda de Audio (Osciloscopio Simulado)
+    // Usaremos el color activo para que brille intensamente
+    ctx.strokeStyle = color; 
+    ctx.globalAlpha = 1.0;
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    
+    // Glow intenso (Estilo Neón)
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = color; 
+
+    ctx.beginPath();
+    
+    // Usamos audio.raw (frecuencias) pero las transformamos para que parezcan una onda de tiempo
+    const data = audio.raw; 
+    // Usamos los primeros 120 bins para tener buena resolución sin ruido agudo excesivo
+    const dataLength = Math.min(data.length, 120); 
+    const sliceW = w / (dataLength - 1);
+    
+    let x = 0;
+
+    for(let i = 0; i < dataLength; i++) {
+        // Normalizamos el valor (0 a 1)
+        const v = data[i] / 255.0; 
+        
+        // La amplitud crece con el bajo (Bass) para que el "latido" sea visible
+        const amplitude = (h * 0.35) * (0.5 + audio.bass * 1.5);
+        
+        // TRUCO: Alternar polaridad (1 vs -1) en cada paso
+        // Esto convierte las barras de frecuencia (solo positivas) en una "onda" que va arriba y abajo
+        const polarity = i % 2 === 0 ? 1 : -1;
+        
+        // Envelope: Suaviza los bordes izquierdo/derecho para que la línea nazca del centro
+        const envelope = Math.sin((i / dataLength) * Math.PI); 
+        
+        const y = centerY + (v * amplitude * polarity * envelope);
+        
+        if(i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        
+        x += sliceW;
+    }
+    ctx.stroke();
+    
+    // 4. Punto de Escaneo (Scan Dot)
+    // Un punto blanco que recorre la línea para dar sensación de "barrido"
+    const scanX = (time * speed * 400) % w;
+    // Buscamos la Y aproximada en ese punto (simplificado al centro para rendimiento)
+    
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 20;
+    
+    ctx.beginPath();
+    ctx.arc(scanX, centerY, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Estela vertical del escáner
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.1;
+    ctx.fillRect(scanX - 2, 0, 4, h);
+
+    ctx.restore();
+};
+
 const drawTunnel = (ctx: CanvasRenderingContext2D, time: number, color: string, speed: number, w: number, h: number, audio: AudioVisualizerData) => {
     ctx.save();
     ctx.strokeStyle = color;
@@ -1255,6 +1348,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 if (style === 'fire') drawFire(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'circuit') drawCircuit(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
                 if (style === 'rain') drawRain(ctx, time, effectiveBgColor, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+                if (style === 'digital-heartbeat' as any) {
+                drawDigitalHeartbeat(ctx, time, effectiveColorsActive, speed, CANVAS_WIDTH, CANVAS_HEIGHT, audioData);
+            }
             });
         }
         

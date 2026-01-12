@@ -109,7 +109,7 @@ const IMAGE_EFFECT_OPTIONS = [
 
 const PROCEDURAL_STYLE_OPTIONS = [
     'grid', 'stars', 'plasma', 'tunnel', 'matrix', 'gradient-wave', 'hexagons', 'kaleidoscope', 'dna',
-    'nebula', 'fire', 'circuit', 'rain'
+    'nebula', 'fire', 'circuit', 'rain','digital-heartbeat'
 ];
 
 interface KeyframeEditorProps {
