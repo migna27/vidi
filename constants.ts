@@ -67,6 +67,35 @@ export const TEMPLATES: RendererConfig[] = [
     keyframes: []
   },
   {
+    id: 'cyber-city',
+    name: 'Cyber City',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: {
+      type: 'procedural',
+      color: '#050a14',
+      proceduralStyle: ['grid', 'rain'],
+      intensity: 0.7,
+      playbackSpeed: 1.0,
+      imageEffects: ['scan-drift', 'chromatic-shift'],
+      imageEffectSpeed: 1.0
+    },
+    colors: { text: '#00ffff', active: '#ff00ff', secondary: '#ffff00' },
+    font: { family: 'Rubik Glitch Pop', weight: '400', italic: false, fontSize: 85 },
+    animation: { entrance: 'glitch', active: 'neon', exit: 'scramble' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'spectrum' },
+    effects: {
+      glow: 1.0, blur: false, chromaticAberration: true, vignette: true, scanlines: true,
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+    },
+    particles: { enabled: true, count: 50, speed: 1.0, shape: 'square', color: ['#00ffff', '#ff00ff'], particleBehavior: 'drift' },
+    camera: { shake: false, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
     id: 'retro-vhs',
     name: 'Retro VHS 90s',
     showLyrics: true,
@@ -92,6 +121,35 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [], particleBehavior: 'drift' },
     camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'noir-cinema',
+    name: 'Noir Cinema',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: {
+      type: 'procedural',
+      color: '#1a1a1a',
+      proceduralStyle: ['gradient-wave'],
+      intensity: 0.2,
+      playbackSpeed: 0.5,
+      imageEffects: [],
+      imageEffectSpeed: 1.0
+    },
+    colors: { text: '#cccccc', active: '#ffffff', secondary: '#888888' },
+    font: { family: 'Cinzel', weight: '700', italic: false, fontSize: 70 },
+    animation: { entrance: 'typewriter', active: 'pulse', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.5, visualizerStyle: 'none' },
+    effects: {
+      glow: 0.2, blur: true, chromaticAberration: false, vignette: true, scanlines: false,
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 20, speed: 0.2, shape: 'circle', color: ['#ffffff'], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: false, rotate: false, sway: false, hardKick: false, panic: false, screenPump: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -125,6 +183,35 @@ export const TEMPLATES: RendererConfig[] = [
     keyframes: []
   },
   {
+    id: 'deep-ocean',
+    name: 'Deep Ocean',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: {
+      type: 'procedural',
+      color: '#001e3c',
+      proceduralStyle: ['plasma', 'gradient-wave'],
+      intensity: 0.6,
+      playbackSpeed: 0.5,
+      imageEffects: ['liquid-warp'],
+      imageEffectSpeed: 0.5
+    },
+    colors: { text: '#90caf9', active: '#e3f2fd', secondary: '#64b5f6' },
+    font: { family: 'Lobster', weight: '400', italic: false, fontSize: 80 },
+    animation: { entrance: 'fade', active: 'wave', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 0.8, visualizerStyle: 'orb' },
+    effects: {
+      glow: 0.6, blur: true, chromaticAberration: false, vignette: true, scanlines: false,
+      filmGrain: false, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 60, speed: 0.3, shape: 'circle', color: ['#e3f2fd', '#bbdefb'], particleBehavior: 'rise' },
+    camera: { shake: false, zoomBeat: true, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
     id: 'glitch-news',
     name: 'Glitch Matrix',
     showLyrics: true,
@@ -150,6 +237,35 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [], particleBehavior: 'drift' },
     camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true, screenPump: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'street-tag',
+    name: 'Street Tag',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: {
+      type: 'solid',
+      color: '#262626',
+      proceduralStyle: [],
+      intensity: 1.0,
+      playbackSpeed: 1.0,
+      imageEffects: [],
+      imageEffectSpeed: 1.0
+    },
+    colors: { text: '#f5f5f5', active: '#ffab00', secondary: '#ffea00' },
+    font: { family: 'Permanent Marker', weight: '400', italic: false, fontSize: 90 },
+    animation: { entrance: 'slam', active: 'bounce', exit: 'fade' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
+    effects: {
+      glow: 0.4, blur: false, chromaticAberration: true, vignette: true, scanlines: false,
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: true, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: true, rotate: true, sway: false, hardKick: true, panic: false, screenPump: true },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -260,6 +376,35 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: { enabled: true, count: 150, speed: 0.2, shape: 'circle', color: ['#c4b5fd', '#ffffff'], particleBehavior: 'rise' },
     camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'midnight-horror',
+    name: 'Midnight Horror',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: {
+      type: 'procedural',
+      color: '#0f0000',
+      proceduralStyle: ['matrix', 'fire'],
+      intensity: 0.4,
+      playbackSpeed: 0.8,
+      imageEffects: ['dark-error', 'ghosting'],
+      imageEffectSpeed: 0.8
+    },
+    colors: { text: '#880000', active: '#ff0000', secondary: '#550000' },
+    font: { family: 'Nosifer', weight: '400', italic: false, fontSize: 80 },
+    animation: { entrance: 'burn', active: 'shiver', exit: 'burn' },
+    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
+    effects: {
+      glow: 0.8, blur: false, chromaticAberration: true, vignette: true, scanlines: false,
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 10, speed: 0.1, shape: 'circle', color: ['#330000'], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: true, screenPump: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   }
