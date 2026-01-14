@@ -112,6 +112,9 @@ const parseSrtToLyricData = (srtContent: string): LyricData => {
 
 // --- AUDIO ANALYSIS HELPER (Replaces suspend loop) ---
 const extractAudioAnalysis = (audioBuffer: AudioBuffer, fps: number, duration: number): AudioVisualizerData[] => {
+    // Safety check to prevent massive allocation or invalid length
+    if (!duration || duration <= 0 || !Number.isFinite(duration)) return [];
+
     const totalFrames = Math.ceil(duration * fps);
     const result: AudioVisualizerData[] = new Array(totalFrames);
     const rawData = audioBuffer.getChannelData(0); // Use first channel
@@ -653,7 +656,8 @@ export default function App() {
       // PHASE 1: AUDIO RENDER & ANALYSIS (Fast, Offline)
       console.log("Phase 1: Rendering Audio & Extracting Analysis...");
       
-      const offlineCtx = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+      const safeDuration = Math.max(0.1, duration);
+      const offlineCtx = new OfflineAudioContext(2, Math.ceil(safeDuration * sampleRate), sampleRate);
       const offlineMasterGain = offlineCtx.createGain();
       offlineMasterGain.connect(offlineCtx.destination);
       
@@ -724,22 +728,40 @@ export default function App() {
         }
       });
       
+      // --- DYNAMIC BITRATE CALCULATION ---
+      // Cap at 25Mbps for safety on 4K exports to prevent memory crashes
+      const pixelCount = VIDEO_WIDTH * VIDEO_HEIGHT;
+      const targetBitrate = Math.min(Math.ceil(pixelCount * 30 * 0.1), 25_000_000); 
+      const is4K = VIDEO_WIDTH > 1920 || VIDEO_HEIGHT > 1920;
+      
+      // AVC Level Selection for MP4
+      const avcCodecString = is4K ? 'avc1.640033' : 'avc1.4d002a';
+
       const codecConfig: VideoEncoderConfig = finalExportFormat === 'mp4' 
-      ? { codec: 'avc1.4d002a', width: VIDEO_WIDTH, height: VIDEO_HEIGHT, bitrate: 8_000_000 } // Higher bitrate
+      ? { 
+          codec: avcCodecString, 
+          width: VIDEO_WIDTH, 
+          height: VIDEO_HEIGHT, 
+          bitrate: targetBitrate 
+        }
       : { 
           codec: 'vp09.00.10.08', 
           width: VIDEO_WIDTH, 
           height: VIDEO_HEIGHT, 
-          bitrate: 6_000_000,
-          bitrateMode: exportMode === 'alpha' ? 'variable' : undefined, // Variable can help with alpha in some profiles
-          alpha: exportMode === 'alpha' ? 'keep' : 'discard' // ENABLE ALPHA IN ENCODER
+          bitrate: targetBitrate,
+          bitrateMode: exportMode === 'alpha' ? 'variable' : undefined, 
+          alpha: exportMode === 'alpha' ? 'keep' : 'discard' 
         };
 
       // --- CODEC VALIDATION ---
       try {
           const support = await VideoEncoder.isConfigSupported(codecConfig);
           if (!support.supported) {
-              throw new Error(`The selected codec configuration is not supported by your browser: ${codecConfig.codec} ${exportMode === 'alpha' ? '(Alpha)' : ''}`);
+              console.warn(`Codec config not fully supported: ${JSON.stringify(codecConfig)}. Trying basic config...`);
+              // Fallback for MP4 if High Profile fails (though most browsers support it)
+              if (finalExportFormat === 'mp4' && is4K) {
+                   codecConfig.codec = 'avc1.4d002a'; // Try standard, browser might scale or fail
+              }
           }
           videoEncoder.configure(codecConfig);
       } catch (e) {
@@ -810,7 +832,7 @@ export default function App() {
       await videoEncoder.flush();
       videoEncoder.close();
 
-      // Audio Encoding (Skip for Alpha? No, usually keep audio)
+      // Audio Encoding (Chunked to prevent Memory Issues)
       const audioEncoder = new AudioEncoder({
         output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
         error: (e) => console.error("AudioEncoder error:", e)
@@ -821,33 +843,40 @@ export default function App() {
         codec: audioCodecString,
         numberOfChannels: 2,
         sampleRate: sampleRate,
-        bitrate: 192000
+        bitrate: 128000
       });
 
-      // Interleave Audio Data
-      const numberOfFrames = renderedAudioBuffer.length;
-      const numberOfChannels = renderedAudioBuffer.numberOfChannels;
-      const interleaved = new Float32Array(numberOfFrames * numberOfChannels);
+      // Split audio into chunks for stable encoding
+      const totalSamples = renderedAudioBuffer.length;
+      const channels = renderedAudioBuffer.numberOfChannels;
+      const chan0 = renderedAudioBuffer.getChannelData(0);
+      const chan1 = channels > 1 ? renderedAudioBuffer.getChannelData(1) : chan0;
       
-      // Safe channel getters
-      const channel0 = renderedAudioBuffer.getChannelData(0);
-      const channel1 = numberOfChannels > 1 ? renderedAudioBuffer.getChannelData(1) : channel0;
+      const CHUNK_SIZE = 4096; // Standard chunk size for encoders
       
-      for(let i=0; i<numberOfFrames; i++) {
-          interleaved[i*2] = channel0[i];
-          interleaved[i*2+1] = channel1[i];
+      for (let i = 0; i < totalSamples; i += CHUNK_SIZE) {
+          const remaining = totalSamples - i;
+          const len = Math.min(CHUNK_SIZE, remaining);
+          const chunkData = new Float32Array(len * 2);
+          
+          for (let j = 0; j < len; j++) {
+              chunkData[j*2] = chan0[i+j];
+              chunkData[j*2+1] = chan1[i+j];
+          }
+          
+          const audioData = new AudioData({
+            format: 'f32',
+            sampleRate: sampleRate,
+            numberOfFrames: len,
+            numberOfChannels: 2,
+            timestamp: i / sampleRate * 1_000_000,
+            data: chunkData
+          });
+          
+          audioEncoder.encode(audioData);
+          audioData.close();
       }
 
-      const audioData = new AudioData({
-        format: 'f32',
-        sampleRate: sampleRate,
-        numberOfFrames: numberOfFrames,
-        numberOfChannels: numberOfChannels,
-        timestamp: 0,
-        data: interleaved
-      });
-
-      audioEncoder.encode(audioData);
       await audioEncoder.flush();
       audioEncoder.close();
 

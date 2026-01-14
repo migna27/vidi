@@ -23,8 +23,11 @@ export const FONTS = [
 
 export const RESOLUTIONS = [
   { id: '16:9', name: 'Landscape (1920x1080)', width: 1920, height: 1080 },
+  { id: '16:9-4k', name: 'Landscape 4K (3840x2160)', width: 3840, height: 2160 },
   { id: '9:16', name: 'Portrait (1080x1920)', width: 1080, height: 1920 },
+  { id: '9:16-4k', name: 'Portrait 4K (2160x3840)', width: 2160, height: 3840 },
   { id: '1:1', name: 'Square (1080x1080)', width: 1080, height: 1080 },
+  { id: '1:1-4k', name: 'Square 4K (2160x2160)', width: 2160, height: 2160 },
   { id: '4:5', name: 'Social (1080x1350)', width: 1080, height: 1350 }
 ];
 
@@ -64,23 +67,89 @@ export const TEMPLATES: RendererConfig[] = [
     keyframes: []
   },
   {
-    id: 'cyber-circuit',
-    name: 'Cyber Circuit',
+    id: 'retro-vhs',
+    name: 'Retro VHS 90s',
     showLyrics: true,
     resolutionId: '16:9',
     layout: { mode: 'center', horizontalMargin: 0.1 },
-    background: { type: 'procedural', color: '#000000', proceduralStyle: ['grid', 'circuit', 'matrix'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
-    colors: { text: '#00ff00', active: '#ffffff', secondary: '#003300' },
-    font: { family: 'Rubik Glitch', weight: '400', italic: false, fontSize: 80 },
-    animation: { entrance: 'typewriter', active: 'glitch-shake', exit: 'glitch' },
-    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'spectrum' },
+    background: { 
+        type: 'procedural', 
+        color: '#000022', 
+        proceduralStyle: ['grid'], 
+        intensity: 0.6, 
+        playbackSpeed: 1.0, 
+        imageEffects: ['vhs-stripes', 'chromatic-shift', 'scan-drift'], 
+        imageEffectSpeed: 2.0 
+    },
+    colors: { text: '#cccccc', active: '#00ff00', secondary: '#ff00ff' },
+    font: { family: 'Pixelify Sans', weight: '700', italic: false, fontSize: 70 },
+    animation: { entrance: 'typewriter', active: 'jitter', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'none' },
     effects: { 
-      glow: 0.5, blur: false, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+      glow: 0.7, blur: true, chromaticAberration: true, vignette: true, scanlines: false, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
     },
     particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [], particleBehavior: 'drift' },
     camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: false, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'toxic-waste',
+    name: 'Toxic Sludge',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: { 
+        type: 'procedural', 
+        color: '#112200', 
+        proceduralStyle: ['plasma'], 
+        intensity: 1.5, 
+        playbackSpeed: 1.0, 
+        imageEffects: ['liquid-warp', 'thermal'], 
+        imageEffectSpeed: 0.5 
+    },
+    colors: { text: '#ccff00', active: '#00ff00', secondary: '#33ff00' },
+    font: { family: 'Creepster', weight: '400', italic: false, fontSize: 90 },
+    animation: { entrance: 'inflate', active: 'bounce', exit: 'sink' },
+    audioReactivity: { enabled: true, sensitivity: 1.5, visualizerStyle: 'shockwave' },
+    effects: { 
+      glow: 0.9, blur: false, chromaticAberration: false, vignette: true, scanlines: false, 
+      filmGrain: false, mirror: false, invert: false, barrelDistortion: false, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: true, count: 40, speed: 1.0, shape: 'circle', color: ['#00ff00', '#ccff00'], particleBehavior: 'rise' },
+    camera: { shake: false, zoomBeat: true, rotate: true, sway: true, hardKick: false, panic: false, screenPump: true },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  },
+  {
+    id: 'glitch-news',
+    name: 'Glitch Matrix',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: { 
+        type: 'procedural', 
+        color: '#000000', 
+        proceduralStyle: ['matrix', 'grid'], 
+        intensity: 0.8, 
+        playbackSpeed: 1.0, 
+        imageEffects: ['dark-error', 'pixel-noise'], 
+        imageEffectSpeed: 1.0 
+    },
+    colors: { text: '#ffffff', active: '#ff0000', secondary: '#990000' },
+    font: { family: 'Rubik Glitch', weight: '400', italic: false, fontSize: 80 },
+    animation: { entrance: 'scramble', active: 'glitch-shake', exit: 'glitch' },
+    audioReactivity: { enabled: true, sensitivity: 1.3, visualizerStyle: 'spectrum' },
+    effects: { 
+      glow: 0.5, blur: false, chromaticAberration: true, vignette: false, scanlines: true, 
+      filmGrain: true, mirror: false, invert: true, barrelDistortion: false, mosaic: true,
+      sepia: false, grayscale: true, oldMovie: false, halftone: false, kaleidoscope: false, rgbSplit: true
+    },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'square', color: [], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: false, hardKick: true, panic: true, screenPump: true },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
@@ -191,27 +260,6 @@ export const TEMPLATES: RendererConfig[] = [
     },
     particles: { enabled: true, count: 150, speed: 0.2, shape: 'circle', color: ['#c4b5fd', '#ffffff'], particleBehavior: 'rise' },
     camera: { shake: false, zoomBeat: false, rotate: false, sway: true, hardKick: false, panic: false, screenPump: false },
-    sectionStyles: DEFAULT_SECTION_STYLES,
-    keyframes: []
-  },
-  {
-    id: 'horror-night',
-    name: 'Horror Night',
-    showLyrics: true,
-    resolutionId: '16:9',
-    layout: { mode: 'center', horizontalMargin: 0.1 },
-    background: { type: 'procedural', color: '#1a0000', proceduralStyle: ['rain'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: ['red-error', 'dark-error'], imageEffectSpeed: 1.0 },
-    colors: { text: '#880000', active: '#ff0000', secondary: '#330000' },
-    font: { family: 'Nosifer', weight: '400', italic: false, fontSize: 80 },
-    animation: { entrance: 'fade', active: 'shiver', exit: 'burn' },
-    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
-    effects: { 
-      glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
-      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
-      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
-    },
-    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
-    camera: { shake: true, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false, screenPump: false },
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   }

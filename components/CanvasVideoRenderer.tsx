@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe, SectionType, SectionStyle, ImageEffect, ProceduralStyle } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
@@ -34,12 +34,13 @@ interface Particle {
 }
 
 // --- SHADERS (GLSL) ---
-// This moves the heavy lifting of background generation from CPU to GPU
 const VERTEX_SHADER = `
   attribute vec2 position;
   varying vec2 vUv;
   void main() {
     vUv = position * 0.5 + 0.5;
+    // Flip Y for WebGL texture coordinates compatibility
+    vUv.y = 1.0 - vUv.y; 
     gl_Position = vec4(position, 0.0, 1.0);
   }
 `;
@@ -49,133 +50,316 @@ const FRAGMENT_SHADER = `
   
   uniform float u_time;
   uniform vec2 u_resolution;
+  uniform sampler2D u_texture;
+  uniform float u_use_texture;
+  
+  // Camera/Transform Uniforms
+  uniform vec2 u_cam_offset;
+  uniform float u_cam_zoom;
+  uniform float u_cam_rotate;
+  
   uniform vec3 u_color_bg;
-  uniform vec3 u_color_active; // Used for accents
+  uniform vec3 u_color_active;
   uniform float u_bass;
   uniform float u_mid;
   uniform float u_high;
   uniform float u_intensity;
+  uniform float u_speed; 
   
-  // Style flags (1.0 = enabled, 0.0 = disabled)
+  // Flags
   uniform float u_style_grid;
   uniform float u_style_plasma;
   uniform float u_style_stars;
-  uniform float u_style_nebula;
-  uniform float u_style_fire;
   uniform float u_style_matrix;
-  uniform float u_style_tunnel;
-  uniform float u_style_hexagons;
+  
+  // FX Flags
+  uniform float u_fx_vhs;
+  uniform float u_fx_glitch;
+  uniform float u_fx_pixelate;
+  uniform float u_fx_rgb_split;     // Static RGB Split
+  uniform float u_fx_chromatic;     // Reactive Chromatic Aberration
+  uniform float u_fx_thermal;
+  uniform float u_fx_liquid;
+  uniform float u_fx_mirror;
+  uniform float u_fx_scanlines;
+  uniform float u_fx_film_grain;
+  uniform float u_fx_vignette;
+  uniform float u_fx_barrel;
+  uniform float u_fx_old_movie;
+  uniform float u_fx_kaleidoscope;
+  uniform float u_fx_halftone;
+  uniform float u_fx_grayscale;
+  uniform float u_fx_invert_beat;   // Invert on Beat
+  uniform float u_fx_sepia;
   
   varying vec2 vUv;
 
-  // Noise helper
-  float hash(float n) { return fract(sin(n) * 43758.5453123); }
-  float noise(vec2 x) {
-      vec2 p = floor(x);
-      vec2 f = fract(x);
-      f = f * f * (3.0 - 2.0 * f);
-      float n = p.x + p.y * 57.0;
-      return mix(mix(hash(n + 0.0), hash(n + 1.0), f.x), mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y);
+  // --- UTILS ---
+  float random(vec2 st) {
+      return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+  }
+  float noise(vec2 st) {
+      vec2 i = floor(st);
+      vec2 f = fract(st);
+      float a = random(i);
+      float b = random(i + vec2(1.0, 0.0));
+      float c = random(i + vec2(0.0, 1.0));
+      float d = random(i + vec2(1.0, 1.0));
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+  }
+  float luminance(vec3 col) {
+      return dot(col, vec3(0.299, 0.587, 0.114));
   }
 
+  // --- TRANSFORM FUNCTIONS ---
+  
+  vec2 applyCamera(vec2 uv) {
+      vec2 p = uv - 0.5;
+      float s = sin(u_cam_rotate);
+      float c = cos(u_cam_rotate);
+      p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+      p /= u_cam_zoom;
+      p -= u_cam_offset;
+      return p + 0.5;
+  }
+
+  // --- DISTORTION FUNCTIONS ---
+  
+  vec2 applyKaleidoscope(vec2 uv) {
+      vec2 p = uv - 0.5;
+      float r = length(p);
+      float a = atan(p.y, p.x);
+      float sides = 6.0;
+      float tau = 6.28318;
+      a = mod(a, tau/sides);
+      a = abs(a - tau/sides/2.0);
+      return r * vec2(cos(a), sin(a)) + 0.5;
+  }
+
+  vec2 applyBarrelDistortion(vec2 uv) {
+      vec2 p = uv - 0.5;
+      float d = length(p);
+      float power = 0.5 * u_intensity;
+      
+      // Distort
+      // (1.0 + d*d*power) creates the curve
+      vec2 distorted = p * (1.0 + d * d * power);
+      
+      // Zoom Correction: Scale down slightly to fit the distortion or Scale up to remove black edges
+      // For "Improve Distort", usually we want to zoom IN slightly so we don't see edges
+      float zoom = 1.0 / (1.0 + 0.25 * power); // Inverse scale
+      
+      return (distorted * zoom) + 0.5;
+  }
+
+  vec2 applyMirror(vec2 uv) {
+      return vec2(abs(uv.x - 0.5) + 0.5, uv.y);
+  }
+
+  vec2 applyLiquid(vec2 uv) {
+      float t = u_time * u_speed;
+      float xOffset = sin(uv.y * 10.0 + t) * 0.02 * u_intensity;
+      float yOffset = cos(uv.x * 8.0 + t * 1.5) * 0.02 * u_intensity;
+      return uv + vec2(xOffset, yOffset);
+  }
+
+  vec2 applyGlitchUV(vec2 uv) {
+      float t = floor(u_time * 15.0 * u_speed); 
+      float block = noise(vec2(0.0, uv.y * 10.0 + t)); 
+      float displacement = 0.0;
+      if (block > 0.8) {
+          displacement = (random(vec2(t, uv.y)) - 0.5) * 0.2 * u_intensity * (1.0 + u_bass);
+      }
+      return vec2(uv.x + displacement, uv.y);
+  }
+
+  vec2 applyPixelate(vec2 uv) {
+      float pixels = 256.0 - (u_intensity * 200.0);
+      pixels = max(10.0, pixels);
+      vec2 d = vec2(1.0 / pixels, 1.0 / pixels);
+      return vec2(floor(uv.x / d.x) * d.x, floor(uv.y / d.y) * d.y);
+  }
+  
+  vec2 applyVHSDistortion(vec2 uv) {
+     float tracking = 0.0;
+     if (uv.y < 0.1) tracking = sin(uv.y * 100.0 + u_time * 20.0) * 0.02 * u_intensity;
+     float jitter = 0.0;
+     if (random(vec2(u_time, 0.0)) > 0.95) jitter = (random(vec2(u_time, 1.0)) - 0.5) * 0.01 * u_intensity;
+     return vec2(uv.x + tracking, uv.y + jitter);
+  }
+
+  // --- PROCEDURAL GENERATORS ---
+  
   vec3 drawGrid(vec2 uv) {
-      float speed = u_time * u_intensity * 0.5;
-      float horizon = 0.5;
-      if (uv.y > horizon) return vec3(0.0);
-      
-      // Perspective projection simulation
-      vec2 p = uv * 2.0 - 1.0;
-      p.y += 0.5; // Shift horizon
-      
-      float z = 1.0 / (0.5 - uv.y);
-      vec2 gp = p * z;
-      
-      float gridVal = 0.0;
-      
-      // Vertical lines
-      float vLine = step(0.98, fract(gp.x * 2.0 + sin(u_time * 0.2)*u_bass));
-      
-      // Horizontal lines (moving)
-      float hLine = step(0.98, fract(z * 0.5 + speed));
-      
-      float alpha = smoothstep(0.0, 0.8, uv.y * 2.0); // Fade at bottom
-      
-      return u_color_active * (vLine + hLine) * alpha * (1.0 + u_bass);
+      vec2 gridUV = uv * (10.0 + sin(u_time * 0.2)*5.0);
+      vec2 grid = fract(gridUV);
+      float line = step(0.95, max(grid.x, grid.y));
+      return u_color_active * line * u_intensity;
   }
-
+  
   vec3 drawPlasma(vec2 uv) {
-      float t = u_time * u_intensity;
-      float v = sin(uv.x * 10.0 + t);
-      v += sin(uv.y * 10.0 + t);
-      v += sin((uv.x + uv.y) * 10.0 + t);
-      v += cos(sqrt(uv.x * uv.x + uv.y * uv.y) * 10.0 + t);
-      v = v * 0.5 + 0.5; // normalize
-      return mix(u_color_bg, u_color_active, v) * u_intensity;
+      float t = u_time * u_speed;
+      float v = sin(uv.x * 10.0 + t) + sin(uv.y * 10.0 + t) + sin((uv.x + uv.y) * 10.0 + t);
+      v = v * 0.5 + 0.5;
+      return mix(u_color_bg, u_color_active, v);
   }
-
+  
   vec3 drawStars(vec2 uv) {
-      vec2 pos = (uv - 0.5) * u_resolution / u_resolution.y;
-      float t = u_time * u_intensity * 0.2;
-      
       float brightness = 0.0;
-      for (float i = 0.0; i < 3.0; i++) {
-          float z = fract(t + i * 0.3);
-          float fade = 1.0 - z;
-          vec2 p = pos / z;
-          float n = noise(p * 20.0 + i * 100.0);
-          if (n > 0.98) {
-              brightness += fade * (1.0 + u_high * 5.0);
-          }
+      float t = u_time * 0.1 * u_speed;
+      for (float i=0.0; i<3.0; i++) {
+         float z = fract(t + i*0.3);
+         vec2 p = (uv - 0.5) * (1.0/z) + 0.5;
+         float star = step(0.995, random(floor(p * 50.0)));
+         brightness += star * (1.0 - z) * u_high;
       }
       return vec3(brightness);
   }
 
-  vec3 drawNebula(vec2 uv) {
-      vec2 p = uv * 4.0;
-      float q = noise(p + u_time * 0.1);
-      float r = noise(p + q + u_time * 0.2);
-      float f = noise(p + r);
-      
-      vec3 color = mix(u_color_bg, u_color_active, f);
-      return color * (0.5 + u_mid) * u_intensity;
+  vec3 drawMatrix(vec2 uv) {
+      vec2 cell = floor(uv * 40.0);
+      float r = random(cell);
+      float drop = fract(r + u_time * u_speed);
+      float trail = smoothstep(0.5, 1.0, drop); 
+      return u_color_active * trail * u_intensity * step(0.5, random(cell + vec2(1.0)));
+  }
+
+  // --- POST-PROCESSING COLORS ---
+
+  vec3 applyThermal(vec3 col) {
+     float lum = luminance(col);
+     vec3 heat = mix(vec3(0.0, 0.0, 1.0), vec3(1.0, 1.0, 0.0), smoothstep(0.0, 0.5, lum));
+     heat = mix(heat, vec3(1.0, 0.0, 0.0), smoothstep(0.5, 1.0, lum));
+     return heat;
+  }
+
+  vec3 applyScanlines(vec3 col, vec2 uv) {
+     float count = u_resolution.y * 0.8;
+     float sl = sin(uv.y * count + u_time * 10.0);
+     return col * (0.9 + 0.1 * sl);
   }
   
-  vec3 drawFire(vec2 uv) {
-      vec2 p = uv * vec2(2.0, 1.0);
-      p.y += u_time * u_intensity;
-      float n = noise(p * 5.0);
-      float bottomFade = 1.0 - uv.y;
-      float fireShape = step(0.3, n * bottomFade * (1.0 + u_bass));
-      return mix(vec3(0.0), u_color_active, fireShape) * bottomFade;
+  vec3 applyFilmGrain(vec3 col, vec2 uv) {
+      float n = random(uv + mod(u_time, 10.0));
+      // Use mix instead of add to make sure it's visible on white
+      float amount = 0.15 * u_intensity;
+      return mix(col, vec3(n), amount);
   }
   
-  vec3 drawTunnel(vec2 uv) {
-      vec2 p = -1.0 + 2.0 * uv;
-      float r = pow(pow(p.x * p.x, 4.0) + pow(p.y * p.y, 4.0), 1.0/8.0);
-      float a = atan(p.y, p.x);
-      float t = u_time * u_intensity;
-      
-      vec3 col = vec3(0.0);
-      float v = step(0.5, sin(20.0 * r - 4.0 * t + 2.0 * sin(a * 4.0)));
-      return mix(u_color_bg, u_color_active, v) * (r * u_bass * 2.0 + 0.2);
+  vec3 applyVHSColor(vec3 col, vec2 uv) {
+      float lum = luminance(col);
+      col = mix(col, vec3(lum), 0.3);
+      float line = step(0.99, sin(uv.y * 5.0 + u_time * 10.0));
+      col += line * 0.2;
+      return col;
+  }
+
+  vec3 applyVignette(vec3 col, vec2 uv) {
+      float dist = distance(uv, vec2(0.5));
+      float vig = smoothstep(0.75, 0.2, dist);
+      return col * vig;
+  }
+
+  vec3 applyOldMovie(vec3 col, vec2 uv) {
+      vec3 sepia = vec3(1.2, 1.0, 0.8);
+      float gray = luminance(col);
+      vec3 final = vec3(gray) * sepia;
+      float flicker = 0.9 + 0.1 * sin(u_time * 20.0);
+      float scratch = 0.0;
+      if (random(vec2(floor(u_time * 10.0), uv.x)) > 0.998) scratch = 1.0; 
+      return final * flicker + scratch;
+  }
+
+  vec3 applyHalftone(vec3 col, vec2 uv) {
+      float dots = 50.0; 
+      vec2 center = floor(uv * dots) / dots + (0.5 / dots);
+      float dist = distance(uv, center);
+      float lum = luminance(col);
+      // Dot radius depends on luminance
+      float radius = (1.0 - lum) * (0.7 / dots);
+      float pattern = step(radius, dist);
+      return col * pattern;
+  }
+  
+  vec3 applyInvertBeat(vec3 col) {
+      // Invert if bass is kicking hard ( > 0.5)
+      float invert = step(0.5, u_bass); 
+      return mix(col, 1.0 - col, invert);
   }
 
   void main() {
-    vec3 color = u_color_bg; // Base background
+    vec2 uv = vUv;
     
-    // Additive mixing of enabled styles
-    if (u_style_grid > 0.5) color += drawGrid(vUv);
-    if (u_style_plasma > 0.5) color = mix(color, drawPlasma(vUv), 0.5);
-    if (u_style_stars > 0.5) color += drawStars(vUv);
-    if (u_style_nebula > 0.5) color += drawNebula(vUv);
-    if (u_style_fire > 0.5) color += drawFire(vUv);
-    if (u_style_tunnel > 0.5) color += drawTunnel(vUv);
+    // --- 1. GLOBAL CAMERA TRANSFORM ---
+    uv = applyCamera(uv);
     
-    // Simple Vignette
-    vec2 uv = vUv * (1.0 - vUv.yx);
-    float vig = uv.x * uv.y * 15.0;
-    vig = pow(vig, 0.25);
-    color *= vig;
+    // --- 2. UV DISTORTION (Order Matters) ---
+    // Kaleidoscope first to mirror everything
+    if (u_fx_kaleidoscope > 0.5) uv = applyKaleidoscope(uv);
+    
+    if (u_fx_barrel > 0.5) uv = applyBarrelDistortion(uv);
+    if (u_fx_mirror > 0.5) uv = applyMirror(uv);
+    if (u_fx_liquid > 0.5) uv = applyLiquid(uv);
+    if (u_fx_glitch > 0.5) uv = applyGlitchUV(uv);
+    if (u_fx_vhs > 0.5) uv = applyVHSDistortion(uv);
+    if (u_fx_pixelate > 0.5) uv = applyPixelate(uv);
+
+    vec3 color = vec3(0.0);
+
+    // --- 3. SAMPLING / GENERATION ---
+    if (u_use_texture > 0.5) {
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            color = u_color_bg * 0.1; 
+        } else {
+            // CHROMATIC ABERRATION (Reactive vs Static)
+            float shift = 0.0;
+            
+            // Reactive CA (distance based * bass)
+            if (u_fx_chromatic > 0.5) {
+                float dist = distance(uv, vec2(0.5));
+                shift += dist * 0.05 * u_bass * u_intensity;
+            }
+            
+            // Static RGB Split or VHS
+            if (u_fx_rgb_split > 0.5 || u_fx_vhs > 0.5) {
+                shift += 0.005 * u_intensity;
+                if (u_fx_vhs > 0.5) shift += 0.003;
+            }
+            
+            if (shift > 0.0001) {
+                float r = texture2D(u_texture, uv + vec2(shift, 0.0)).r;
+                float g = texture2D(u_texture, uv).g;
+                float b = texture2D(u_texture, uv - vec2(shift, 0.0)).b;
+                color = vec3(r, g, b);
+            } else {
+                color = texture2D(u_texture, uv).rgb;
+            }
+        }
+    } else {
+        color = u_color_bg;
+        if (u_style_grid > 0.5) color += drawGrid(uv);
+        if (u_style_plasma > 0.5) color = mix(color, drawPlasma(uv), 0.5);
+        if (u_style_stars > 0.5) color += drawStars(uv);
+        if (u_style_matrix > 0.5) color += drawMatrix(uv);
+        color *= (0.5 + u_intensity);
+    }
+
+    // --- 4. COLOR FX ---
+    if (u_fx_thermal > 0.5) color = applyThermal(color);
+    if (u_fx_old_movie > 0.5) color = applyOldMovie(color, uv);
+    if (u_fx_halftone > 0.5) color = applyHalftone(color, uv);
+    
+    if (u_fx_scanlines > 0.5) color = applyScanlines(color, uv);
+    if (u_fx_film_grain > 0.5 || u_fx_vhs > 0.5) color = applyFilmGrain(color, uv);
+    if (u_fx_vhs > 0.5) color = applyVHSColor(color, uv);
+    
+    if (u_fx_invert_beat > 0.5) color = applyInvertBeat(color);
+    
+    if (u_fx_grayscale > 0.5) color = vec3(luminance(color));
+    if (u_fx_sepia > 0.5) color = vec3(luminance(color)) * vec3(1.2, 1.0, 0.8);
+    
+    if (u_fx_vignette > 0.5) color = applyVignette(color, uv);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -202,7 +386,6 @@ const hexToRgbNormalized = (hex: string) => {
     ] : [0, 0, 0];
 };
 
-// Standard math helpers
 const lerp = (start: number, end: number, t: number) => start * (1 - t) + end * t;
 const hexToRgb = (hex: string) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -221,25 +404,6 @@ const lerpColor = (start: string, end: string, t: number) => {
     const b = lerp(s.b, e.b, t);
     return rgbToHex(r, g, b);
 };
-const getRandomChar = () => "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*".charAt(Math.floor(Math.random() * 42));
-const getDeterministicRandom = (seed: number) => { const x = Math.sin(seed) * 10000; return x - Math.floor(x); };
-
-// Animation Picker
-const getRandomAnimation = (seed: number, type: 'entrance' | 'active') => {
-    const entranceOptions = ['fade', 'slide', 'slam', 'zoom', 'typewriter', 'spin', 'blur', 'glitch', 'elastic', 'drop', 'scramble', 'spiral', 'inflate'];
-    const activeOptions = ['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'rainbow', 'heartbeat', 'swing', 'glitch-shake', 'bass-bulge', 'stretch-vertical', 'orbit-spin', 'blur-pulse', 'chromatic-beat'];
-    const opts = type === 'entrance' ? entranceOptions : activeOptions;
-    return opts[Math.floor(getDeterministicRandom(seed + (type === 'active' ? 100 : 0)) * opts.length)] as any;
-};
-
-// Ease functions
-const easeOutElastic = (t: number): number => {
-    const c4 = (2 * Math.PI) / 3;
-    return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
-};
-const easeOutBack = (t: number): number => {
-    const c1 = 1.70158; return 1 + (c1 + 1) * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};
 
 export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVideoRendererProps>(({
   data,
@@ -254,13 +418,13 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   const glCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const glContextRef = useRef<WebGLRenderingContext | null>(null);
   const glProgramRef = useRef<WebGLProgram | null>(null);
+  const glTextureRef = useRef<WebGLTexture | null>(null);
   const glUniformsRef = useRef<Record<string, WebGLUniformLocation | null>>({});
   
   const lastTimeRef = useRef<number>(0);
-  const vhsGlitchState = useRef({ active: false, startTime: 0, duration: 3.0, lastEndTime: -10 });
-  const vhsGlobalIntensity = useRef(0);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const bgVideoRef = useRef<HTMLVideoElement | null>(null);
+  const videoTextureReady = useRef(false);
 
   useLayoutEffect(() => {
     wordsByLineCache.current.clear();
@@ -272,17 +436,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
   // --- WEBGL INITIALIZATION (Offscreen) ---
   useEffect(() => {
-      // Create separate canvas for WebGL context
       const c = document.createElement('canvas');
       c.width = CANVAS_WIDTH;
       c.height = CANVAS_HEIGHT;
       glCanvasRef.current = c;
       
-      const gl = c.getContext('webgl');
+      const gl = c.getContext('webgl', { preserveDrawingBuffer: true });
       if (!gl) return;
       glContextRef.current = gl;
 
-      // Compile Shaders
       const createShader = (type: number, source: string) => {
           const shader = gl.createShader(type);
           if (!shader) return null;
@@ -308,7 +470,16 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       gl.linkProgram(program);
       glProgramRef.current = program;
 
-      // Buffer Setup (Full Screen Quad)
+      // Create Texture Object
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      // Set parameters so we can handle any size image (non-power-of-2)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      glTextureRef.current = texture;
+
       const buffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -320,33 +491,56 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
            1.0,  1.0
       ]), gl.STATIC_DRAW);
 
-      // Uniform Locations
       glUniformsRef.current = {
           u_time: gl.getUniformLocation(program, 'u_time'),
           u_resolution: gl.getUniformLocation(program, 'u_resolution'),
+          u_use_texture: gl.getUniformLocation(program, 'u_use_texture'),
+          u_texture: gl.getUniformLocation(program, 'u_texture'),
+          
+          // Camera Uniforms
+          u_cam_offset: gl.getUniformLocation(program, 'u_cam_offset'),
+          u_cam_zoom: gl.getUniformLocation(program, 'u_cam_zoom'),
+          u_cam_rotate: gl.getUniformLocation(program, 'u_cam_rotate'),
+
           u_color_bg: gl.getUniformLocation(program, 'u_color_bg'),
           u_color_active: gl.getUniformLocation(program, 'u_color_active'),
           u_bass: gl.getUniformLocation(program, 'u_bass'),
           u_mid: gl.getUniformLocation(program, 'u_mid'),
           u_high: gl.getUniformLocation(program, 'u_high'),
           u_intensity: gl.getUniformLocation(program, 'u_intensity'),
-          // Style Flags
+          u_speed: gl.getUniformLocation(program, 'u_speed'),
+          // Styles
           u_style_grid: gl.getUniformLocation(program, 'u_style_grid'),
           u_style_plasma: gl.getUniformLocation(program, 'u_style_plasma'),
           u_style_stars: gl.getUniformLocation(program, 'u_style_stars'),
-          u_style_nebula: gl.getUniformLocation(program, 'u_style_nebula'),
-          u_style_fire: gl.getUniformLocation(program, 'u_style_fire'),
-          u_style_tunnel: gl.getUniformLocation(program, 'u_style_tunnel'),
+          u_style_matrix: gl.getUniformLocation(program, 'u_style_matrix'),
+          // Effects
+          u_fx_vhs: gl.getUniformLocation(program, 'u_fx_vhs'),
+          u_fx_glitch: gl.getUniformLocation(program, 'u_fx_glitch'),
+          u_fx_pixelate: gl.getUniformLocation(program, 'u_fx_pixelate'),
+          u_fx_rgb_split: gl.getUniformLocation(program, 'u_fx_rgb_split'),
+          u_fx_chromatic: gl.getUniformLocation(program, 'u_fx_chromatic'),
+          u_fx_thermal: gl.getUniformLocation(program, 'u_fx_thermal'),
+          u_fx_liquid: gl.getUniformLocation(program, 'u_fx_liquid'),
+          u_fx_mirror: gl.getUniformLocation(program, 'u_fx_mirror'),
+          u_fx_scanlines: gl.getUniformLocation(program, 'u_fx_scanlines'),
+          u_fx_film_grain: gl.getUniformLocation(program, 'u_fx_film_grain'),
+          u_fx_vignette: gl.getUniformLocation(program, 'u_fx_vignette'),
+          u_fx_barrel: gl.getUniformLocation(program, 'u_fx_barrel'),
+          u_fx_old_movie: gl.getUniformLocation(program, 'u_fx_old_movie'),
+          u_fx_kaleidoscope: gl.getUniformLocation(program, 'u_fx_kaleidoscope'),
+          u_fx_halftone: gl.getUniformLocation(program, 'u_fx_halftone'),
+          u_fx_grayscale: gl.getUniformLocation(program, 'u_fx_grayscale'),
+          u_fx_invert_beat: gl.getUniformLocation(program, 'u_fx_invert_beat'),
+          u_fx_sepia: gl.getUniformLocation(program, 'u_fx_sepia'),
       };
 
-      // Attribute Setup
       const positionLocation = gl.getAttribLocation(program, "position");
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-  }, []); // Run once on mount
+  }, []);
 
-  // Resize WebGL canvas when resolution changes
   useEffect(() => {
       if (glCanvasRef.current && glContextRef.current) {
           glCanvasRef.current.width = CANVAS_WIDTH;
@@ -355,14 +549,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       }
   }, [CANVAS_WIDTH, CANVAS_HEIGHT]);
 
-  // Media Loading
   useEffect(() => {
+    // Reset video ready flag when URL changes
+    videoTextureReady.current = false;
+
     if (config.background.type === 'image' && config.background.url) {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.src = config.background.url;
-        bgImageRef.current = img;
-    } else bgImageRef.current = null;
+        img.onload = () => { bgImageRef.current = img; };
+        bgImageRef.current = null;
+    } 
 
     if (config.background.type === 'video' && config.background.url) {
          const vid = document.createElement('video');
@@ -372,8 +569,10 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
          vid.muted = true;
          vid.playsInline = true;
          vid.preload = "auto";
+         vid.oncanplay = () => { videoTextureReady.current = true; };
          vid.load();
          bgVideoRef.current = vid;
+         vid.play().catch(() => {}); // Ensure play is called
     } else {
         if(bgVideoRef.current) { bgVideoRef.current.pause(); bgVideoRef.current = null; }
     }
@@ -439,22 +638,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const dt = time - lastTimeRef.current;
     lastTimeRef.current = time;
-    const safeDt = Math.abs(dt) > 1.0 ? 0.016 : dt; 
-
-    vhsGlobalIntensity.current = 0;
 
     // --- KEYFRAME INTERPOLATION ---
-    // (Collapsed for brevity - similar logic to before but ensures effective vars are set)
     let effectiveColorsActive = config.colors.active;
     let effectiveColorsText = config.colors.text;
     let effectiveBgColor = config.background.color;
-    let effectiveGlow = config.effects.glow;
     let effectiveZoomOffset = 0;
     let effectiveRotateOffset = 0;
+    let effectiveImageEffects = config.background.imageEffects || [];
+    let effectiveEffectSpeed = config.background.imageEffectSpeed || 1.0;
     
-    // ... Keyframe logic ...
     const keyframes = config.keyframes || [];
     if (keyframes.length > 0) {
         let prevKeyframe: AnimationKeyframe | null = null;
@@ -467,9 +661,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             const t = Math.min(1, Math.max(0, (time - prevKeyframe.time) / (nextKeyframe.time - prevKeyframe.time)));
             effectiveColorsActive = lerpColor(prevKeyframe.values.colors_active || config.colors.active, nextKeyframe.values.colors_active || config.colors.active, t);
             effectiveBgColor = lerpColor(prevKeyframe.values.background_color || config.background.color, nextKeyframe.values.background_color || config.background.color, t);
+            effectiveZoomOffset = lerp(prevKeyframe.values.camera_zoom || 0, nextKeyframe.values.camera_zoom || 0, t);
+            effectiveRotateOffset = lerp(prevKeyframe.values.camera_rotate || 0, nextKeyframe.values.camera_rotate || 0, t);
         } else if (prevKeyframe) {
              effectiveColorsActive = prevKeyframe.values.colors_active || config.colors.active;
              effectiveBgColor = prevKeyframe.values.background_color || config.background.color;
+             effectiveZoomOffset = prevKeyframe.values.camera_zoom || 0;
+             effectiveRotateOffset = prevKeyframe.values.camera_rotate || 0;
+             if (prevKeyframe.values.image_effects) effectiveImageEffects = prevKeyframe.values.image_effects;
+             if (prevKeyframe.values.image_effect_speed) effectiveEffectSpeed = prevKeyframe.values.image_effect_speed;
         }
     }
 
@@ -480,6 +680,53 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (!audioEnabled) { bass=0; mid=0; high=0; } 
     else { bass *= sensitivity; mid *= sensitivity; high *= sensitivity; }
 
+    // --- GLOBAL CAMERA PHYSICS ---
+    let camX = 0;
+    let camY = 0;
+    let camRot = effectiveRotateOffset;
+    let camZoom = 1.0 + effectiveZoomOffset;
+
+    // 1. Shake
+    if (config.camera.shake) {
+        const shakeAmt = 5 * (1 + bass * 3);
+        camX += (Math.random() - 0.5) * shakeAmt;
+        camY += (Math.random() - 0.5) * shakeAmt;
+    }
+
+    // 2. Zoom Beat / Screen Pump
+    if (config.camera.zoomBeat && audioEnabled) {
+        camZoom += bass * 0.15;
+    }
+    if (config.camera.screenPump && audioEnabled) {
+        // More subtle, rhythmic pump
+        camZoom += Math.sin(time * 8.0) * 0.05 * bass;
+    }
+
+    // 3. Sway
+    if (config.camera.sway) {
+        camX += Math.sin(time * 0.5) * 20;
+        camRot += Math.cos(time * 0.3) * 0.02;
+    }
+
+    // 4. Rotate (Auto)
+    if (config.camera.rotate) {
+        camRot += Math.sin(time * 0.2) * 0.05;
+    }
+
+    // 5. Hard Kick (Bass trigger)
+    if (config.camera.hardKick && audioEnabled && bass > 0.7) {
+        camZoom += 0.2;
+        camRot += (Math.random() - 0.5) * 0.1;
+    }
+
+    // 6. Panic
+    if (config.camera.panic) {
+        const panicSpeed = time * 20.0;
+        camX += Math.sin(panicSpeed) * 30 * (1 + high);
+        camY += Math.cos(panicSpeed * 0.8) * 30 * (1 + high);
+        camZoom += Math.sin(time * 10.0) * 0.1;
+    }
+
     // ===========================
     // LAYER 1: GPU BACKGROUND (WebGL)
     // ===========================
@@ -488,17 +735,44 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (isAlphaRender) {
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     } else {
-        if (config.background.type === 'procedural' && glContextRef.current && glProgramRef.current) {
+        // ALWAYS use WebGL now for background to support unified effects
+        if (glContextRef.current && glProgramRef.current) {
             const gl = glContextRef.current;
             const program = glProgramRef.current;
             const uniforms = glUniformsRef.current;
 
             gl.useProgram(program);
             
-            // Set Uniforms
+            // 1. Upload Texture if needed
+            let useTexture = 0;
+            if (config.background.type === 'image' && bgImageRef.current) {
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, glTextureRef.current);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgImageRef.current);
+                useTexture = 1;
+            } else if (config.background.type === 'video' && bgVideoRef.current && videoTextureReady.current) {
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, glTextureRef.current);
+                try {
+                   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgVideoRef.current);
+                   useTexture = 1;
+                } catch(e) {
+                   // Sometimes video isn't ready in Safari/Firefox immediately
+                   useTexture = 0; 
+                }
+            }
+
+            // 2. Set Uniforms
             gl.uniform1f(uniforms.u_time, time);
             gl.uniform2f(uniforms.u_resolution, CANVAS_WIDTH, CANVAS_HEIGHT);
+            gl.uniform1f(uniforms.u_use_texture, useTexture);
+            gl.uniform1i(uniforms.u_texture, 0);
             
+            // PASS CAMERA TO SHADER FOR SYNC
+            gl.uniform2f(uniforms.u_cam_offset, camX / CANVAS_WIDTH, camY / CANVAS_HEIGHT); // Normalize offset 0..1
+            gl.uniform1f(uniforms.u_cam_zoom, camZoom);
+            gl.uniform1f(uniforms.u_cam_rotate, camRot);
+
             const colBg = hexToRgbNormalized(effectiveBgColor);
             gl.uniform3f(uniforms.u_color_bg, colBg[0], colBg[1], colBg[2]);
             
@@ -509,8 +783,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_mid, mid);
             gl.uniform1f(uniforms.u_high, high);
             gl.uniform1f(uniforms.u_intensity, config.background.intensity || 0.5);
+            gl.uniform1f(uniforms.u_speed, effectiveEffectSpeed);
 
-            // Styles Mapping
+            // Procedural Styles
             const styles = Array.isArray(config.background.proceduralStyle) 
                 ? config.background.proceduralStyle 
                 : (config.background.proceduralStyle ? [config.background.proceduralStyle] : ['grid']);
@@ -518,31 +793,36 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_style_grid, styles.includes('grid') ? 1.0 : 0.0);
             gl.uniform1f(uniforms.u_style_plasma, styles.includes('plasma') ? 1.0 : 0.0);
             gl.uniform1f(uniforms.u_style_stars, styles.includes('stars') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_style_nebula, styles.includes('nebula') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_style_fire, styles.includes('fire') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_style_tunnel, styles.includes('tunnel') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_style_matrix, styles.includes('matrix') ? 1.0 : 0.0);
+
+            // Post-Processing Effects
+            const effects = effectiveImageEffects;
+            gl.uniform1f(uniforms.u_fx_vhs, effects.includes('vhs-stripes') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_glitch, effects.includes('red-error') || effects.includes('dark-error') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_pixelate, effects.includes('pixel-noise') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_rgb_split, config.effects.rgbSplit ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_chromatic, effects.includes('chromatic-shift') || config.effects.chromaticAberration ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_thermal, effects.includes('thermal') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_liquid, effects.includes('liquid-warp') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_mirror, effects.includes('mirror-x') || config.effects.mirror ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_scanlines, effects.includes('scan-drift') || config.effects.scanlines ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_film_grain, config.effects.filmGrain ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_vignette, config.effects.vignette ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_barrel, config.effects.barrelDistortion ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_old_movie, config.effects.oldMovie ? 1.0 : 0.0);
+            
+            // New FX
+            gl.uniform1f(uniforms.u_fx_kaleidoscope, config.effects.kaleidoscope ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_halftone, config.effects.halftone ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_grayscale, config.effects.grayscale ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_invert_beat, config.effects.invert ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_sepia, config.effects.sepia ? 1.0 : 0.0);
             
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             
             // Draw WebGL Canvas onto Main 2D Canvas
+            // Note: Since we applied camera in shader, we draw this 1:1.
             ctx.drawImage(glCanvasRef.current!, 0, 0);
-
-        } else if (config.background.type === 'solid') {
-            ctx.fillStyle = effectiveBgColor;
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        } else if (config.background.type === 'image' || config.background.type === 'video') {
-             // ... Existing Image/Video Logic (kept simple for brevity, logic remains same)
-             const media = config.background.type === 'image' ? bgImageRef.current : bgVideoRef.current;
-             if (media) {
-                 const width = (media as any).videoWidth || (media as any).width || 100;
-                 const height = (media as any).videoHeight || (media as any).height || 100;
-                 let scale = Math.max(CANVAS_WIDTH / width, CANVAS_HEIGHT / height);
-                 const x = (CANVAS_WIDTH - width * scale) / 2;
-                 const y = (CANVAS_HEIGHT - height * scale) / 2;
-                 ctx.drawImage(media as any, x, y, width * scale, height * scale);
-             } else {
-                 ctx.fillStyle = '#000'; ctx.fillRect(0,0,CANVAS_WIDTH, CANVAS_HEIGHT);
-             }
         }
         
         // Darken overlay
@@ -551,18 +831,23 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     }
 
     // ===========================
-    // LAYER 2: PARTICLES (Canvas 2D - Better for shapes/sprites)
+    // LAYER 2 & 3: CANVAS 2D CAMERA TRANSFORM
     // ===========================
-    let zoom = 1.0 + effectiveZoomOffset + (config.camera.zoomBeat && audioEnabled ? bass * 0.1 : 0);
-    let rot = effectiveRotateOffset + (config.camera.rotate ? Math.sin(time * 0.2) * 0.01 : 0);
-    
-    // Apply Camera Transform
+    // Apply the same camera transforms to the 2D context for Particles and Text
     ctx.save();
+    
+    // 1. Center
     ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-    ctx.rotate(rot);
-    ctx.scale(zoom, zoom);
+    // 2. Rotate
+    ctx.rotate(camRot);
+    // 3. Zoom
+    ctx.scale(camZoom, camZoom);
+    // 4. Translate (Inverse)
+    ctx.translate(-camX, -camY);
+    // 5. Un-Center
     ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
 
+    // --- PARTICLES ---
     if (config.particles.enabled && !isAlphaRender) {
          particlesRef.current.forEach(p => {
              // Logic for movement (Same as before)
@@ -599,12 +884,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
          });
     }
 
-    // ===========================
-    // LAYER 3: TEXT (Canvas 2D - Highest Quality)
-    // ===========================
+    // --- TEXT RENDERING (With Camera Applied) ---
     if (config.showLyrics !== false) {
         // ... Text Rendering Logic (Identical to previous for feature parity) ...
-        // ... Reusing logic for finding segments and drawing words ...
         const visibleSegments = data.segments.filter(s => time >= s.start - 2.0 && time <= s.end + 2.0);
         
         visibleSegments.forEach(seg => {
@@ -660,7 +942,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         });
     }
 
-    ctx.restore(); // End Camera
+    ctx.restore(); // End Camera for 2D Layers
   };
 
   return (
