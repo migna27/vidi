@@ -89,9 +89,11 @@ export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rot
 export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note' | 'tetris';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
-export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna' | 'nebula' | 'fire' | 'circuit' | 'rain';
+export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna' | 'nebula' | 'fire' | 'circuit' | 'rain' | 'digital-heartbeat';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
 export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x' | 'bright-happy';
+export type LayoutMode = 'center' | 'alternating';
+export type TextAlignment = 'global' | 'center' | 'left' | 'right' | 'alternating';
 
 export interface KeyframeValues {
   colors_text?: string;
@@ -110,6 +112,11 @@ export interface SectionStyle {
   colors_active?: string;
   effects_glow_boost?: number; // Multiplier or add value
   camera_zoom_boost?: number;
+  fontScale?: number; // 1.0 = 100%
+  layout?: {
+      align: TextAlignment;
+      horizontalMargin?: number; // Override margin
+  };
   animation?: {
     entrance?: AnimationStyle;
     active?: ActiveStyle;
@@ -138,6 +145,12 @@ export interface RendererConfig {
   name: string;
   showLyrics: boolean; // New: Global toggle for lyrics rendering
   resolutionId: string; // '16:9', '9:16', '1:1', '4:5'
+  
+  layout: {
+      mode: LayoutMode;
+      horizontalMargin: number; // 0.0 to 0.5 (Percentage of screen width)
+  };
+
   background: {
     type: BackgroundType;
     color: string; // Base color or fallback

@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
 import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle } from '../types';
 import { TimelineEditor } from './TimelineEditor';
@@ -629,6 +629,50 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
                              {style.enabled ? (
                                  <div className="space-y-3">
+                                     {/* NEW: Layout Control */}
+                                     <div className="bg-black/20 p-2 rounded-md border border-white/5 space-y-3">
+                                        <SelectInput 
+                                            label="Alignment / Layout"
+                                            value={style.layout?.align || 'global'}
+                                            options={['global', 'center', 'left', 'right', 'alternating']}
+                                            onChange={(v) => {
+                                                const currentLayout = style.layout || {};
+                                                updateSectionStyle(key, 'layout', { ...currentLayout, align: v });
+                                            }}
+                                        />
+                                        
+                                        {(style.layout?.align === 'left' || style.layout?.align === 'right' || style.layout?.align === 'alternating') && (
+                                            <div>
+                                                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                                    <span>Side Margin</span>
+                                                    <span>{Math.round((style.layout?.horizontalMargin ?? 0.1) * 100)}%</span>
+                                                </div>
+                                                <input 
+                                                    type="range" min="0.0" max="0.4" step="0.05" 
+                                                    value={style.layout?.horizontalMargin ?? 0.1} 
+                                                    onChange={(e) => {
+                                                        const currentLayout = style.layout || {};
+                                                        updateSectionStyle(key, 'layout', { ...currentLayout, horizontalMargin: parseFloat(e.target.value) });
+                                                    }}
+                                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                                />
+                                            </div>
+                                        )}
+                                        
+                                        <div>
+                                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                                <span>Font Size Scale</span>
+                                                <span>{Math.round((style.fontScale || 1.0) * 100)}%</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0.5" max="2.0" step="0.1" 
+                                                value={style.fontScale || 1.0} 
+                                                onChange={(e) => updateSectionStyle(key, 'fontScale', parseFloat(e.target.value))}
+                                                className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                            />
+                                        </div>
+                                     </div>
+
                                      <ColorInput 
                                         label="Active Color" 
                                         value={style.colors_active || config.colors.active} 
@@ -736,6 +780,43 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         {/* CUSTOMIZE TAB */}
         {activeTab === 'customize' && (
           <div className="p-4 space-y-6">
+            
+            {/* Layout Section - NEW */}
+            <section>
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <AlignJustify size={14}/> Layout
+                </h3>
+                <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
+                    <SelectInput 
+                        label="Global Mode" 
+                        value={config.layout?.mode || 'center'} 
+                        options={['center', 'alternating']} 
+                        onChange={(v) => {
+                            const newLayout = { ...(config.layout || { horizontalMargin: 0.1 }), mode: v };
+                            onUpdate({ ...config, layout: newLayout });
+                        }} 
+                    />
+                    
+                    {config.layout?.mode === 'alternating' && (
+                        <div>
+                            <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                <span>Global Side Margin</span>
+                                <span>{Math.round((config.layout?.horizontalMargin || 0.1) * 100)}%</span>
+                            </div>
+                            <input 
+                                type="range" min="0.0" max="0.4" step="0.05" 
+                                value={config.layout?.horizontalMargin || 0.1} 
+                                onChange={(e) => {
+                                    const newLayout = { ...config.layout, horizontalMargin: parseFloat(e.target.value) };
+                                    onUpdate({ ...config, layout: newLayout });
+                                }}
+                                className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                            />
+                        </div>
+                    )}
+                </div>
+            </section>
+
             {/* Resolution */}
             <section>
                 <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">

@@ -4,6 +4,12 @@ import { LyricData, RendererConfig } from "./types";
 
 export const FONTS = [
   'Montserrat',
+  'Rubik Glitch',
+  'Rubik Glitch Pop',
+  'Creepster',
+  'Nosifer',
+  'Butcherman',
+  'Pixelify Sans',
   'Anton',
   'Bebas Neue',
   'Lobster',
@@ -28,11 +34,11 @@ export const DEFAULT_LYRICS: LyricData = {
 };
 
 const DEFAULT_SECTION_STYLES = {
-  verse: { enabled: false },
-  chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.2, camera_zoom_boost: 0.2 },
-  bridge: { enabled: true, colors_active: '#ffff00', effects_glow_boost: 0.0, camera_zoom_boost: 0.0 },
-  intro: { enabled: false },
-  outro: { enabled: false }
+  verse: { enabled: false, fontScale: 1.0, layout: { align: 'global' as const } },
+  chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.2, camera_zoom_boost: 0.2, fontScale: 1.1, layout: { align: 'global' as const } },
+  bridge: { enabled: true, colors_active: '#ffff00', effects_glow_boost: 0.0, camera_zoom_boost: 0.0, fontScale: 1.0, layout: { align: 'global' as const } },
+  intro: { enabled: false, fontScale: 1.0, layout: { align: 'global' as const } },
+  outro: { enabled: false, fontScale: 1.0, layout: { align: 'global' as const } }
 };
 
 export const TEMPLATES: RendererConfig[] = [
@@ -41,6 +47,7 @@ export const TEMPLATES: RendererConfig[] = [
     name: 'Ethereal Nebula',
     showLyrics: true,
     resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
     background: { type: 'procedural', color: '#0f172a', proceduralStyle: ['stars', 'nebula'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#e2e8f0', active: '#38bdf8', secondary: '#818cf8' },
     font: { family: 'Montserrat', weight: '900', italic: false, fontSize: 80 },
@@ -61,9 +68,10 @@ export const TEMPLATES: RendererConfig[] = [
     name: 'Cyber Circuit',
     showLyrics: true,
     resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
     background: { type: 'procedural', color: '#000000', proceduralStyle: ['grid', 'circuit', 'matrix'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#00ff00', active: '#ffffff', secondary: '#003300' },
-    font: { family: 'Press Start 2P', weight: '400', italic: false, fontSize: 50 },
+    font: { family: 'Rubik Glitch', weight: '400', italic: false, fontSize: 80 },
     animation: { entrance: 'typewriter', active: 'glitch-shake', exit: 'glitch' },
     audioReactivity: { enabled: true, sensitivity: 1.2, visualizerStyle: 'spectrum' },
     effects: { 
@@ -81,6 +89,7 @@ export const TEMPLATES: RendererConfig[] = [
     name: 'Bass Inferno',
     showLyrics: true,
     resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
     background: { type: 'procedural', color: '#1a0500', proceduralStyle: ['fire', 'tunnel'], intensity: 1.0, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#ffcc00', active: '#ff4400', secondary: '#ff0000' },
     font: { family: 'Anton', weight: '900', italic: false, fontSize: 90 },
@@ -101,6 +110,7 @@ export const TEMPLATES: RendererConfig[] = [
     name: 'Happy Tetris Rain',
     showLyrics: true,
     resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
     background: {
       type: 'solid',
       color: '#1a1a1a', 
@@ -168,6 +178,7 @@ export const TEMPLATES: RendererConfig[] = [
     name: 'Dreamscape',
     showLyrics: true,
     resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
     background: { type: 'procedural', color: '#1e1b4b', proceduralStyle: ['stars'], intensity: 0.3, playbackSpeed: 1.0, imageEffects: [], imageEffectSpeed: 1.0 },
     colors: { text: '#e2e8f0', active: '#c4b5fd', secondary: '#818cf8' },
     font: { family: 'Playfair Display', weight: '700', italic: true, fontSize: 75 },
@@ -183,4 +194,25 @@ export const TEMPLATES: RendererConfig[] = [
     sectionStyles: DEFAULT_SECTION_STYLES,
     keyframes: []
   },
+  {
+    id: 'horror-night',
+    name: 'Horror Night',
+    showLyrics: true,
+    resolutionId: '16:9',
+    layout: { mode: 'center', horizontalMargin: 0.1 },
+    background: { type: 'procedural', color: '#1a0000', proceduralStyle: ['rain'], intensity: 0.8, playbackSpeed: 1.0, imageEffects: ['red-error', 'dark-error'], imageEffectSpeed: 1.0 },
+    colors: { text: '#880000', active: '#ff0000', secondary: '#330000' },
+    font: { family: 'Nosifer', weight: '400', italic: false, fontSize: 80 },
+    animation: { entrance: 'fade', active: 'shiver', exit: 'burn' },
+    audioReactivity: { enabled: true, sensitivity: 1.0, visualizerStyle: 'none' },
+    effects: { 
+      glow: 0.4, blur: true, chromaticAberration: true, vignette: true, scanlines: true, 
+      filmGrain: true, mirror: false, invert: false, barrelDistortion: true, mosaic: false,
+      sepia: false, grayscale: false, oldMovie: true, halftone: false, kaleidoscope: false, rgbSplit: false
+    },
+    particles: { enabled: false, count: 0, speed: 0, shape: 'circle', color: [], particleBehavior: 'drift' },
+    camera: { shake: true, zoomBeat: true, rotate: false, sway: true, hardKick: true, panic: false, screenPump: false },
+    sectionStyles: DEFAULT_SECTION_STYLES,
+    keyframes: []
+  }
 ];

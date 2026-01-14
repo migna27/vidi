@@ -110,6 +110,78 @@ const parseSrtToLyricData = (srtContent: string): LyricData => {
   return { segments };
 };
 
+// --- AUDIO ANALYSIS HELPER (Replaces suspend loop) ---
+const extractAudioAnalysis = (audioBuffer: AudioBuffer, fps: number, duration: number): AudioVisualizerData[] => {
+    const totalFrames = Math.ceil(duration * fps);
+    const result: AudioVisualizerData[] = new Array(totalFrames);
+    const rawData = audioBuffer.getChannelData(0); // Use first channel
+    const sampleRate = audioBuffer.sampleRate;
+    const samplesPerFrame = Math.floor(sampleRate / fps);
+    
+    // FFT emulation parameters
+    const fftSize = 256;
+    const frequencyBinCount = fftSize / 2;
+
+    for (let i = 0; i < totalFrames; i++) {
+        const startSample = i * samplesPerFrame;
+        const endSample = Math.min(startSample + samplesPerFrame, rawData.length);
+        
+        // Calculate Energy Bands directly from Time Domain (Faster than FFT)
+        let sum = 0;
+        let diffSum = 0;
+        let highFreqSum = 0;
+        
+        // Analyze window
+        for (let j = startSample; j < endSample; j++) {
+            const val = rawData[j];
+            sum += val * val; // RMS (Energy)
+            
+            if (j > startSample) {
+                const diff = val - rawData[j-1];
+                diffSum += diff * diff; // Derivative Energy (Highs)
+                
+                // Second derivative for very high freq approximation
+                if (j > startSample + 1) {
+                     const diff2 = (val - rawData[j-1]) - (rawData[j-1] - rawData[j-2]);
+                     highFreqSum += diff2 * diff2;
+                }
+            }
+        }
+        
+        const rms = Math.sqrt(sum / (endSample - startSample)) || 0;
+        const diffRms = Math.sqrt(diffSum / (endSample - startSample)) || 0;
+        const highRms = Math.sqrt(highFreqSum / (endSample - startSample)) || 0;
+
+        // Normalize (Approximate)
+        const bass = Math.min(1, rms * 4); // Bass usually carries most energy
+        const mid = Math.min(1, diffRms * 8); 
+        const high = Math.min(1, highRms * 16);
+
+        // Generate fake frequency data for visualizer compatibility
+        const dataArray = new Uint8Array(frequencyBinCount);
+        
+        // Fill dataArray with computed energies to drive visualizers
+        const bassBins = 10;
+        const midBins = 90;
+        const highBins = frequencyBinCount - bassBins - midBins;
+
+        for(let k=0; k<frequencyBinCount; k++) {
+            if (k < bassBins) dataArray[k] = bass * 255;
+            else if (k < bassBins + midBins) dataArray[k] = mid * 255;
+            else dataArray[k] = high * 255;
+        }
+
+        result[i] = {
+            bass,
+            mid,
+            high,
+            raw: dataArray
+        };
+    }
+    return result;
+};
+
+
 export default function App() {
   const [data, setData] = useState<LyricData>(DEFAULT_LYRICS);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -576,7 +648,8 @@ export default function App() {
       const sampleRate = 44100;
       const FPS = 30;
       const totalFrames = Math.ceil(duration * FPS);
-      
+      const frameDuration = 1 / FPS;
+
       // PHASE 1: AUDIO RENDER & ANALYSIS (Fast, Offline)
       console.log("Phase 1: Rendering Audio & Extracting Analysis...");
       
@@ -584,10 +657,6 @@ export default function App() {
       const offlineMasterGain = offlineCtx.createGain();
       offlineMasterGain.connect(offlineCtx.destination);
       
-      const offlineAnalyser = offlineCtx.createAnalyser();
-      offlineAnalyser.fftSize = 256;
-      offlineMasterGain.connect(offlineAnalyser);
-
       const hasSolo = audioLayers.some(l => l.solo);
       
       // Set up Audio Graph in Offline Context
@@ -606,36 +675,14 @@ export default function App() {
            source.start(0);
       });
 
-      // Prepare Array to hold FFT data for every frame
-      const analysisFrames: AudioVisualizerData[] = new Array(totalFrames);
-      const dataArray = new Uint8Array(offlineAnalyser.frequencyBinCount);
-      const frameDuration = 1 / FPS;
-
-      // Schedule Suspend for every frame to grab FFT data
-      for (let i = 0; i < totalFrames; i++) {
-           const t = i * frameDuration;
-           
-           // Safety: Do not schedule suspend past duration
-           if (t >= duration) break;
-
-           offlineCtx.suspend(t).then(async () => {
-               offlineAnalyser.getByteFrequencyData(dataArray);
-               const bass = dataArray.slice(0, 10).reduce((a,b)=>a+b,0) / 10 / 255;
-               const mid = dataArray.slice(10, 100).reduce((a,b)=>a+b,0) / 90 / 255;
-               const high = dataArray.slice(100, 200).reduce((a,b)=>a+b,0) / 100 / 255;
-               
-               analysisFrames[i] = {
-                   bass, mid, high,
-                   raw: new Uint8Array(dataArray) // Copy buffer
-               };
-               // IMPORTANT: Must resume to continue to next suspend point
-               await offlineCtx.resume();
-           }).catch((e) => console.error("Suspend error", e));
-      }
-
-      // Execute Audio Rendering
+      // Execute Audio Rendering (One shot)
       const renderedAudioBuffer = await offlineCtx.startRendering();
-      console.log("Phase 1 Complete. Audio rendered.");
+      console.log("Audio rendered. Extracting data...");
+      
+      // Optimized: Extract analysis data from PCM directly without suspend loop
+      const analysisFrames = extractAudioAnalysis(renderedAudioBuffer, FPS, duration);
+
+      console.log("Phase 1 Complete. Data ready.");
 
       // PHASE 2: VIDEO ENCODING (Batched, Backpressure Managed)
       setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
@@ -688,11 +735,16 @@ export default function App() {
           alpha: exportMode === 'alpha' ? 'keep' : 'discard' // ENABLE ALPHA IN ENCODER
         };
 
+      // --- CODEC VALIDATION ---
       try {
+          const support = await VideoEncoder.isConfigSupported(codecConfig);
+          if (!support.supported) {
+              throw new Error(`The selected codec configuration is not supported by your browser: ${codecConfig.codec} ${exportMode === 'alpha' ? '(Alpha)' : ''}`);
+          }
           videoEncoder.configure(codecConfig);
       } catch (e) {
           console.error("Encoder Configuration Failed:", e);
-          alert("Your browser does not support the selected export format (likely Alpha transparency). Please switch to 'Normal' mode.");
+          alert((e as Error).message);
           setRenderStatus({ state: 'idle', progress: 0 });
           return;
       }
@@ -709,7 +761,7 @@ export default function App() {
          }
 
          const time = i * frameDuration;
-         const analysis = analysisFrames[i] || { bass: 0, mid: 0, high: 0, raw: new Uint8Array() };
+         const analysis = analysisFrames[i] || { bass: 0, mid: 0, high: 0, raw: new Uint8Array(128) };
 
          // WAIT FOR VIDEO SEEK (Fixes background video flickering)
          if (rendererRef.current?.seekToTime) {

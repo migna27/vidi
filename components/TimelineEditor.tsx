@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { LyricData, Segment, Word } from '../types';
 import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check } from 'lucide-react';
@@ -30,7 +29,7 @@ const mmssToSeconds = (timeStr: string): number => {
 };
 
 // Recalculates word timings linearly across the segment duration
-const recalculateWords = (text: string, start: number, end: number): Word[] => {
+const recalculateWords = (text: string, start: number, end: number, oldWords?: Word[]): Word[] => {
   const lines = text.split('\n');
   const words: Word[] = [];
   // Ensure duration is at least tiny to avoid division by zero
@@ -44,15 +43,48 @@ const recalculateWords = (text: string, start: number, end: number): Word[] => {
 
   if (totalWordCount === 0) return [];
 
+  // Check if we can reuse relative timing from old words
+  // Only implies if word count is identical (segment shift or resize)
+  const canPreserveTiming = oldWords && oldWords.length === totalWordCount;
+  const oldDuration = oldWords && oldWords.length > 0 
+      ? (oldWords[oldWords.length-1].end - oldWords[0].start) // approximation
+      : 1;
+
+  // Fallback linear timing
   const timePerWord = duration / totalWordCount;
   let currentWordIndex = 0;
 
   lines.forEach((line, lineIdx) => {
     const lineWords = line.trim().split(/\s+/).filter(w => w.length > 0);
     lineWords.forEach((w) => {
-      const wordStart = start + (currentWordIndex * timePerWord);
-      const wordEnd = wordStart + timePerWord;
-      
+      let wordStart, wordEnd;
+
+      if (canPreserveTiming && oldWords) {
+          // Relative Scaling
+          const oldW = oldWords[currentWordIndex];
+          // Determine relative position in previous segment (0 to 1)
+          // We map relative to the *segment boundaries* provided, not necessarily word boundaries
+          // But to be safe, let's use the previous word's relative offset from its previous start
+          // Actually, simplistic scaling:
+          // newWordStart = newSegStart + ( (oldWordStart - oldSegStart) / oldSegDuration ) * newSegDuration
+          
+          // However, we don't have the explicit 'oldSegStart' passed here easily without more args.
+          // Let's assume linear distribution for now is better than broken complex logic, 
+          // UNLESS we are just shifting (duration matches).
+          
+          // Actually, let's just stick to linear redistribution for text changes.
+          // For Start/End changes, this function is called with existing text.
+          // If we passed the old segment start/end, we could do perfect scaling.
+          
+          // Fallback to linear for now as requested correction implies specific logic fix or general improvement.
+          // Optimized linear:
+          wordStart = start + (currentWordIndex * timePerWord);
+          wordEnd = wordStart + timePerWord;
+      } else {
+          wordStart = start + (currentWordIndex * timePerWord);
+          wordEnd = wordStart + timePerWord;
+      }
+
       words.push({
         word: w,
         start: wordStart,
@@ -67,8 +99,8 @@ const recalculateWords = (text: string, start: number, end: number): Word[] => {
   return words;
 };
 
-// --- SUB-COMPONENT: TIME INPUT ---
-// Handles the MM:SS display while editing, commits to seconds on blur
+// --- SUB-COMPONENTS ---
+
 const TimeInput = ({ 
   value, 
   onChange,
@@ -81,7 +113,6 @@ const TimeInput = ({
   const [localValue, setLocalValue] = useState(secondsToMMSS(value));
   const [isEditing, setIsEditing] = useState(false);
 
-  // Sync with prop updates if not currently typing
   useEffect(() => {
     if (!isEditing) {
       setLocalValue(secondsToMMSS(value));
@@ -92,7 +123,7 @@ const TimeInput = ({
     setIsEditing(false);
     const seconds = mmssToSeconds(localValue);
     onChange(seconds);
-    setLocalValue(secondsToMMSS(seconds)); // Re-format to ensure validity
+    setLocalValue(secondsToMMSS(seconds));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -113,6 +144,52 @@ const TimeInput = ({
       placeholder="00:00.00"
     />
   );
+};
+
+const DebouncedTextArea = ({ 
+    value, 
+    onChange, 
+    onBlur, 
+    className, 
+    rows,
+    placeholder
+}: { 
+    value: string, 
+    onChange: (val: string) => void, 
+    onBlur: () => void,
+    className?: string,
+    rows?: number,
+    placeholder?: string
+}) => {
+    const [localValue, setLocalValue] = useState(value);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync external value updates (e.g. undo/redo)
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newValue = e.target.value;
+        setLocalValue(newValue);
+        
+        // Debounce parent update to prevent heavy re-renders
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            onChange(newValue);
+        }, 300); // 300ms debounce
+    };
+
+    return (
+        <textarea
+            className={className}
+            rows={rows}
+            value={localValue}
+            onChange={handleChange}
+            onBlur={onBlur}
+            placeholder={placeholder}
+        />
+    );
 };
 
 // --- MAIN COMPONENT ---
@@ -139,13 +216,33 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     // Prepare new segment object
     let updatedSegment = { ...oldSegment, ...updates };
 
-    // If time or explicit flag changed, recalculate the internal word timestamps
-    if (shouldRecalculateWords || updates.start !== undefined || updates.end !== undefined) {
-       updatedSegment.words = recalculateWords(
-          updatedSegment.text, 
-          updatedSegment.start, 
-          updatedSegment.end
-       );
+    // If time changed, try to preserve relative word timings scaling
+    // If text changed (shouldRecalculateWords), we must regenerate
+    if (shouldRecalculateWords) {
+         updatedSegment.words = recalculateWords(
+            updatedSegment.text, 
+            updatedSegment.start, 
+            updatedSegment.end
+         );
+    } else if (updates.start !== undefined || updates.end !== undefined) {
+         // Logic for Time Stretching (Preserving Relative Word Positions)
+         const oldDuration = oldSegment.end - oldSegment.start;
+         const newDuration = updatedSegment.end - updatedSegment.start;
+         
+         if (oldDuration > 0 && updatedSegment.words.length > 0) {
+             const ratio = newDuration / oldDuration;
+             const newStart = updatedSegment.start;
+             const oldStart = oldSegment.start;
+
+             updatedSegment.words = oldSegment.words.map(w => ({
+                 ...w,
+                 start: newStart + (w.start - oldStart) * ratio,
+                 end: newStart + (w.end - oldStart) * ratio
+             }));
+         } else {
+             // Fallback
+             updatedSegment.words = recalculateWords(updatedSegment.text, updatedSegment.start, updatedSegment.end);
+         }
     }
 
     newSegments[index] = updatedSegment;
@@ -179,16 +276,12 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     const lastSeg = newSegments[newSegments.length - 1];
     const newStart = lastSeg ? lastSeg.end + 0.2 : 0;
     
-    // Inherit section from previous if exists
-    // But we don't explicitly set it to keep sparsity unless we want to carry over
-    // For now, let's leave it undefined so it groups with previous visually
-    
     const newSegment: Segment = {
         id: Date.now().toString(),
         start: newStart,
         end: newStart + 2.0,
         text: "New Line",
-        section: undefined, // undefined means it continues previous section
+        section: undefined, 
         words: []
     };
     newSegment.words = recalculateWords(newSegment.text, newSegment.start, newSegment.end);
@@ -213,14 +306,12 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
 
   const confirmSectionEdit = (index: number, name: string) => {
       if (name && name.trim()) {
-          // Normalize to lowercase for styling consistency (verse, chorus, etc.)
           updateSegmentData(index, { section: name.trim().toLowerCase() });
       }
       setEditingSectionId(null);
   };
 
   const handleRemoveSection = (index: number) => {
-      // Set section to undefined to merge with previous
       updateSegmentData(index, { section: undefined });
   };
 
@@ -229,8 +320,6 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     const activeIndex = data.segments.findIndex(s => currentTime >= s.start && currentTime <= s.end);
     
     if (activeIndex !== -1 && scrollRef.current) {
-        // We need to find the specific element, but the children list is dynamic due to section headers.
-        // We'll rely on data-id attributes.
         const activeSegmentId = data.segments[activeIndex].id;
         const row = scrollRef.current.querySelector(`[data-segment-id="${activeSegmentId}"]`) as HTMLElement;
         
@@ -274,8 +363,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
      return SECTION_BG[normalized] || 'bg-neutral-800 text-gray-400';
   };
 
-  // Render logic to handle grouping
-  let currentSection = 'verse'; // Default if nothing defined
+  let currentSection = 'verse'; 
 
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
@@ -462,16 +550,16 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
                                     </div>
                                 </div>
 
-                                {/* ROW 2: TEXT EDITING */}
+                                {/* ROW 2: TEXT EDITING (DEBOUNCED) */}
                                 <div className="relative">
-                                    <textarea
+                                    <DebouncedTextArea
                                         className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${
                                             isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'
                                         }`}
                                         rows={Math.max(2, seg.text.split('\n').length)}
                                         value={seg.text}
-                                        onChange={(e) => updateSegmentData(idx, { text: e.target.value }, false)} 
-                                        onBlur={() => updateSegmentData(idx, {}, true)} 
+                                        onChange={(val) => updateSegmentData(idx, { text: val }, true)} 
+                                        onBlur={() => {}} 
                                         placeholder="Enter lyrics here..."
                                     />
                                     <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 pointer-events-none">
