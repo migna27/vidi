@@ -1,12 +1,15 @@
+
 import React, { useEffect, useRef, useState } from 'react';
-import { LyricData, Segment, Word } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check } from 'lucide-react';
+import { LyricData, Segment, Word, EventBlock, EffectOverrides } from '../types';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
   onUpdate: (data: LyricData) => void;
   currentTime: number;
   onSeek: (time: number) => void;
+  eventBlocks: EventBlock[];
+  onUpdateEventBlocks: (blocks: EventBlock[]) => void;
 }
 
 // --- HELPER FUNCTIONS ---
@@ -29,62 +32,26 @@ const mmssToSeconds = (timeStr: string): number => {
 };
 
 // Recalculates word timings linearly across the segment duration
-const recalculateWords = (text: string, start: number, end: number, oldWords?: Word[]): Word[] => {
+const recalculateWords = (text: string, start: number, end: number): Word[] => {
   const lines = text.split('\n');
   const words: Word[] = [];
-  // Ensure duration is at least tiny to avoid division by zero
   const duration = Math.max(0.1, end - start);
   
   let totalWordCount = 0;
   lines.forEach(line => {
-    const lineWords = line.trim().split(/\s+/).filter(w => w.length > 0);
-    totalWordCount += lineWords.length;
+    totalWordCount += line.trim().split(/\s+/).filter(w => w.length > 0).length;
   });
 
   if (totalWordCount === 0) return [];
 
-  // Check if we can reuse relative timing from old words
-  // Only implies if word count is identical (segment shift or resize)
-  const canPreserveTiming = oldWords && oldWords.length === totalWordCount;
-  const oldDuration = oldWords && oldWords.length > 0 
-      ? (oldWords[oldWords.length-1].end - oldWords[0].start) // approximation
-      : 1;
-
-  // Fallback linear timing
   const timePerWord = duration / totalWordCount;
   let currentWordIndex = 0;
 
   lines.forEach((line, lineIdx) => {
     const lineWords = line.trim().split(/\s+/).filter(w => w.length > 0);
     lineWords.forEach((w) => {
-      let wordStart, wordEnd;
-
-      if (canPreserveTiming && oldWords) {
-          // Relative Scaling
-          const oldW = oldWords[currentWordIndex];
-          // Determine relative position in previous segment (0 to 1)
-          // We map relative to the *segment boundaries* provided, not necessarily word boundaries
-          // But to be safe, let's use the previous word's relative offset from its previous start
-          // Actually, simplistic scaling:
-          // newWordStart = newSegStart + ( (oldWordStart - oldSegStart) / oldSegDuration ) * newSegDuration
-          
-          // However, we don't have the explicit 'oldSegStart' passed here easily without more args.
-          // Let's assume linear distribution for now is better than broken complex logic, 
-          // UNLESS we are just shifting (duration matches).
-          
-          // Actually, let's just stick to linear redistribution for text changes.
-          // For Start/End changes, this function is called with existing text.
-          // If we passed the old segment start/end, we could do perfect scaling.
-          
-          // Fallback to linear for now as requested correction implies specific logic fix or general improvement.
-          // Optimized linear:
-          wordStart = start + (currentWordIndex * timePerWord);
-          wordEnd = wordStart + timePerWord;
-      } else {
-          wordStart = start + (currentWordIndex * timePerWord);
-          wordEnd = wordStart + timePerWord;
-      }
-
+      const wordStart = start + (currentWordIndex * timePerWord);
+      const wordEnd = wordStart + timePerWord;
       words.push({
         word: w,
         start: wordStart,
@@ -127,9 +94,7 @@ const TimeInput = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      (e.target as HTMLInputElement).blur();
-    }
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
   };
 
   return (
@@ -164,20 +129,13 @@ const DebouncedTextArea = ({
     const [localValue, setLocalValue] = useState(value);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Sync external value updates (e.g. undo/redo)
-    useEffect(() => {
-        setLocalValue(value);
-    }, [value]);
+    useEffect(() => { setLocalValue(value); }, [value]);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
         setLocalValue(newValue);
-        
-        // Debounce parent update to prevent heavy re-renders
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-            onChange(newValue);
-        }, 300); // 300ms debounce
+        timeoutRef.current = setTimeout(() => onChange(newValue), 300);
     };
 
     return (
@@ -192,65 +150,69 @@ const DebouncedTextArea = ({
     );
 };
 
+const EffectToggle = ({ label, isActive, onToggle }: { label: string, isActive: boolean | undefined, onToggle: () => void }) => {
+    return (
+        <button
+            onClick={onToggle}
+            className={`text-[10px] px-2 py-1 rounded border transition-colors ${
+                isActive === true 
+                ? 'bg-purple-600 border-purple-400 text-white font-bold shadow-[0_0_10px_rgba(147,51,234,0.3)]' 
+                : isActive === false 
+                ? 'bg-red-900/50 border-red-500/30 text-red-300 line-through decoration-red-500' // Forced Off
+                : 'bg-neutral-800 border-white/5 text-gray-500 hover:border-white/20' // Global
+            }`}
+        >
+            {label}
+        </button>
+    );
+};
+
 // --- MAIN COMPONENT ---
 
-export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, currentTime, onSeek }) => {
+export const TimelineEditor: React.FC<TimelineEditorProps> = ({ 
+    data, 
+    onUpdate, 
+    currentTime, 
+    onSeek,
+    eventBlocks,
+    onUpdateEventBlocks
+}) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
 
   const toggleExpand = (id: string) => {
     const newSet = new Set(expandedSegments);
-    if (newSet.has(id)) {
-        newSet.delete(id);
-    } else {
-        newSet.add(id);
-    }
+    if (newSet.has(id)) newSet.delete(id);
+    else newSet.add(id);
     setExpandedSegments(newSet);
   };
+
+  // --- DATA UPDATERS ---
 
   const updateSegmentData = (index: number, updates: Partial<Segment>, shouldRecalculateWords = false) => {
     const newSegments = [...data.segments];
     const oldSegment = newSegments[index];
-    
-    // Prepare new segment object
     let updatedSegment = { ...oldSegment, ...updates };
 
-    // If time changed, try to preserve relative word timings scaling
-    // If text changed (shouldRecalculateWords), we must regenerate
     if (shouldRecalculateWords) {
-         updatedSegment.words = recalculateWords(
-            updatedSegment.text, 
-            updatedSegment.start, 
-            updatedSegment.end
-         );
+         updatedSegment.words = recalculateWords(updatedSegment.text, updatedSegment.start, updatedSegment.end);
     } else if (updates.start !== undefined || updates.end !== undefined) {
-         // Logic for Time Stretching (Preserving Relative Word Positions)
          const oldDuration = oldSegment.end - oldSegment.start;
          const newDuration = updatedSegment.end - updatedSegment.start;
-         
          if (oldDuration > 0 && updatedSegment.words.length > 0) {
              const ratio = newDuration / oldDuration;
-             const newStart = updatedSegment.start;
-             const oldStart = oldSegment.start;
-
              updatedSegment.words = oldSegment.words.map(w => ({
                  ...w,
-                 start: newStart + (w.start - oldStart) * ratio,
-                 end: newStart + (w.end - oldStart) * ratio
+                 start: updatedSegment.start + (w.start - oldSegment.start) * ratio,
+                 end: updatedSegment.start + (w.end - oldSegment.start) * ratio
              }));
          } else {
-             // Fallback
              updatedSegment.words = recalculateWords(updatedSegment.text, updatedSegment.start, updatedSegment.end);
          }
     }
-
     newSegments[index] = updatedSegment;
-
-    if (updates.start !== undefined) {
-         newSegments.sort((a, b) => a.start - b.start);
-    }
-
+    if (updates.start !== undefined) newSegments.sort((a, b) => a.start - b.start);
     onUpdate({ ...data, segments: newSegments });
   };
 
@@ -264,18 +226,17 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
     onUpdate({ ...data, segments: newSegments });
   };
 
-  const handleDelete = (index: number) => {
+  const handleDeleteSegment = (index: number) => {
     if(!confirm("Delete this lyric segment?")) return;
     const newSegments = [...data.segments];
     newSegments.splice(index, 1);
     onUpdate({ ...data, segments: newSegments });
   };
 
-  const handleAdd = () => {
+  const handleAddSegment = () => {
     const newSegments = [...data.segments];
     const lastSeg = newSegments[newSegments.length - 1];
     const newStart = lastSeg ? lastSeg.end + 0.2 : 0;
-    
     const newSegment: Segment = {
         id: Date.now().toString(),
         start: newStart,
@@ -285,57 +246,62 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
         words: []
     };
     newSegment.words = recalculateWords(newSegment.text, newSegment.start, newSegment.end);
-    
     newSegments.push(newSegment);
     onUpdate({ ...data, segments: newSegments });
   };
 
-  const handleExportJson = () => {
-      const exportData = {
-          ...data,
-          createdAt: new Date().toISOString()
+  // --- EVENT BLOCK UPDATERS ---
+
+  const handleAddEventBlock = () => {
+      const newBlock: EventBlock = {
+          id: `evt-${Date.now()}`,
+          start: currentTime,
+          end: currentTime + 5,
+          label: "FX Block",
+          overrides: {},
+          collapsed: false,
+          smoothIn: false,
+          smoothOut: false
       };
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `lyrics-export-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      onUpdateEventBlocks([...eventBlocks, newBlock].sort((a, b) => a.start - b.start));
   };
 
-  const confirmSectionEdit = (index: number, name: string) => {
-      if (name && name.trim()) {
-          updateSegmentData(index, { section: name.trim().toLowerCase() });
-      }
-      setEditingSectionId(null);
+  const updateEventBlock = (id: string, updates: Partial<EventBlock>) => {
+      let newBlocks = eventBlocks.map(b => b.id === id ? { ...b, ...updates } : b);
+      if (updates.start !== undefined) newBlocks.sort((a, b) => a.start - b.start);
+      onUpdateEventBlocks(newBlocks);
   };
 
-  const handleRemoveSection = (index: number) => {
-      updateSegmentData(index, { section: undefined });
+  const toggleOverride = (blockId: string, key: keyof EffectOverrides) => {
+      const block = eventBlocks.find(b => b.id === blockId);
+      if(!block) return;
+
+      const current = block.overrides[key];
+      // Cycle: undefined (Global) -> true (On) -> false (Off) -> undefined
+      let next: boolean | undefined;
+      if (current === undefined) next = true;
+      else if (current === true) next = false;
+      else next = undefined;
+
+      const newOverrides = { ...block.overrides, [key]: next };
+      // Remove key if undefined to clean up
+      if (next === undefined) delete newOverrides[key];
+
+      updateEventBlock(blockId, { overrides: newOverrides });
+  };
+  
+  const deleteEventBlock = (id: string) => {
+      if(!confirm("Delete this event block?")) return;
+      onUpdateEventBlocks(eventBlocks.filter(b => b.id !== id));
   };
 
-  // Auto-scroll logic
-  useEffect(() => {
-    const activeIndex = data.segments.findIndex(s => currentTime >= s.start && currentTime <= s.end);
-    
-    if (activeIndex !== -1 && scrollRef.current) {
-        const activeSegmentId = data.segments[activeIndex].id;
-        const row = scrollRef.current.querySelector(`[data-segment-id="${activeSegmentId}"]`) as HTMLElement;
-        
-        if (row) {
-            const container = scrollRef.current;
-            const rowTop = row.offsetTop;
-            const rowBottom = rowTop + row.offsetHeight;
-            const containerTop = container.scrollTop;
-            const containerBottom = containerTop + container.offsetHeight;
+  // --- RENDER HELPERS ---
 
-            if (rowTop < containerTop || rowBottom > containerBottom) {
-                 row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-    }
-  }, [currentTime, data.segments]);
+  // Combine and sort lyrics and events for display
+  const combinedItems = [
+      ...data.segments.map((s, i) => ({ type: 'segment' as const, data: s, index: i, start: s.start })),
+      ...eventBlocks.map((b, i) => ({ type: 'block' as const, data: b, index: i, start: b.start }))
+  ].sort((a, b) => a.start - b.start);
 
   const SECTION_COLORS: Record<string, string> = {
       verse: 'border-blue-500',
@@ -353,17 +319,36 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
       outro: 'bg-red-950/40 text-red-200'
   };
 
-  const getSectionColor = (name: string) => {
-     const normalized = name.toLowerCase().split(' ')[0]; // Handle "Verse 2" -> "verse"
-     return SECTION_COLORS[normalized] || 'border-gray-600';
-  };
-
-  const getSectionBg = (name: string) => {
-     const normalized = name.toLowerCase().split(' ')[0];
-     return SECTION_BG[normalized] || 'bg-neutral-800 text-gray-400';
-  };
+  const getSectionColor = (name: string) => SECTION_COLORS[name.toLowerCase().split(' ')[0]] || 'border-gray-600';
+  const getSectionBg = (name: string) => SECTION_BG[name.toLowerCase().split(' ')[0]] || 'bg-neutral-800 text-gray-400';
 
   let currentSection = 'verse'; 
+
+  // Auto-scroll
+  useEffect(() => {
+    // Find active element
+    const activeItem = combinedItems.find(item => {
+        if(item.type === 'segment') return currentTime >= item.data.start && currentTime <= item.data.end;
+        if(item.type === 'block') return currentTime >= item.data.start && currentTime <= item.data.end;
+        return false;
+    });
+
+    if (activeItem && scrollRef.current) {
+        const id = activeItem.type === 'segment' ? activeItem.data.id : activeItem.data.id;
+        const row = scrollRef.current.querySelector(`[data-id="${id}"]`) as HTMLElement;
+        if (row) {
+             // Basic check to see if visible, if not scroll
+            const container = scrollRef.current;
+            const rowTop = row.offsetTop;
+            const rowBottom = rowTop + row.offsetHeight;
+            const containerTop = container.scrollTop;
+            const containerBottom = containerTop + container.offsetHeight;
+            if (rowTop < containerTop || rowBottom > containerBottom) {
+                 row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+  }, [currentTime, combinedItems]);
 
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
@@ -377,15 +362,14 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
             
             <div className="flex gap-2">
                 <button 
-                    onClick={handleExportJson}
-                    className="text-[10px] flex items-center gap-1 bg-neutral-700 hover:bg-neutral-600 px-3 py-1.5 rounded text-gray-200 transition-colors border border-white/5"
-                    title="Export edited lyrics to JSON"
+                    onClick={handleAddEventBlock}
+                    className="text-[10px] flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/80 border border-purple-500/50 px-3 py-1.5 rounded text-purple-200 transition-colors font-bold"
                 >
-                    <Download size={12} /> JSON
+                    <Zap size={12} /> Add Event
                 </button>
                 <button 
-                    onClick={handleAdd}
-                    className="text-[10px] flex items-center gap-1 bg-cyan-700 hover:bg-cyan-600 px-3 py-1.5 rounded text-white transition-colors font-bold shadow-sm shadow-cyan-900/20"
+                    onClick={handleAddSegment}
+                    className="text-[10px] flex items-center gap-1 bg-cyan-900/50 hover:bg-cyan-800/80 border border-cyan-500/50 px-3 py-1.5 rounded text-cyan-200 transition-colors font-bold"
                 >
                     <Plus size={12} /> Add Line
                 </button>
@@ -394,244 +378,197 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({ data, onUpdate, 
 
         {/* LIST AREA */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2" ref={scrollRef}>
-            {data.segments.length === 0 ? (
+            {combinedItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-gray-500 border-2 border-dashed border-white/5 rounded-xl">
                     <AlertCircle className="mb-2 opacity-50" />
-                    <span className="text-xs">No lyrics found.</span>
-                    <span className="text-[10px] mt-1">Import a file or click "Add Line"</span>
+                    <span className="text-xs">Timeline Empty</span>
+                    <span className="text-[10px] mt-1">Add a Lyric Line or FX Event</span>
                 </div>
             ) : (
-                data.segments.map((seg, idx) => {
-                    const isActive = currentTime >= seg.start && currentTime <= seg.end;
-                    const isExpanded = expandedSegments.has(seg.id);
-                    const isEditingSection = editingSectionId === seg.id;
-                    
-                    // Determine Section Header
-                    const isNewSection = !!seg.section;
-                    if (isNewSection) currentSection = seg.section!;
-                    else if (idx === 0 && !seg.section) currentSection = 'verse'; // First item default
-
-                    const sectionColor = getSectionColor(currentSection);
-                    const sectionBg = getSectionBg(currentSection);
-
-                    return (
-                        <div key={seg.id} className="flex flex-col gap-1">
-                            
-                            {/* SECTION HEADER BLOCK */}
-                            {isNewSection && (
-                                <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 mb-1 ${sectionBg} border border-white/5 shadow-sm`}>
-                                    <div className="flex items-center gap-2">
-                                        <Tag size={12} className="opacity-70" />
-                                        <span className="text-[10px] font-bold uppercase tracking-widest">{currentSection}</span>
+                combinedItems.map((item) => {
+                    // --- RENDER LYRIC SEGMENT ---
+                    if (item.type === 'segment') {
+                        const seg = item.data;
+                        const idx = item.index;
+                        const isActive = currentTime >= seg.start && currentTime <= seg.end;
+                        const isExpanded = expandedSegments.has(seg.id);
+                        const isEditingSection = editingSectionId === seg.id;
+                        
+                        // Handle Section Headers
+                        const isNewSection = !!seg.section;
+                        if (isNewSection) currentSection = seg.section!;
+                        else if (idx === 0 && !seg.section) currentSection = 'verse'; 
+                        
+                        return (
+                             <div key={seg.id} className="flex flex-col gap-1">
+                                {isNewSection && (
+                                    <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 mb-1 ${getSectionBg(currentSection)} border border-white/5 shadow-sm`}>
+                                        <div className="flex items-center gap-2">
+                                            <Tag size={12} className="opacity-70" />
+                                            <span className="text-[10px] font-bold uppercase tracking-widest">{currentSection}</span>
+                                        </div>
                                     </div>
-                                    <button 
-                                        type="button"
-                                        onClick={() => handleRemoveSection(idx)}
-                                        className="p-1 hover:bg-black/20 rounded-full opacity-60 hover:opacity-100 transition-opacity"
-                                        title="Merge with previous section"
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* SEGMENT CARD */}
-                            <div 
-                                data-segment-id={seg.id}
-                                className={`group relative flex flex-col gap-2 p-3 rounded-r-lg border-t border-b border-r border-white/5 transition-all duration-200 border-l-4 ${sectionColor} ${
-                                    isActive 
-                                    ? 'bg-cyan-950/30 border-t-cyan-500/30 border-b-cyan-500/30 shadow-[inset_0_0_20px_rgba(34,211,238,0.05)]' 
-                                    : 'bg-neutral-800 hover:border-r-white/20'
-                                }`}
-                            >
-                                {/* ACTIVE INDICATOR STRIP (Overlay) */}
-                                {isActive && (
-                                    <div className="absolute inset-0 border-2 border-cyan-500/20 rounded-r-lg pointer-events-none" />
                                 )}
-
-                                {/* ROW 1: CONTROLS & TIMESTAMPS */}
-                                <div className="flex items-center justify-between gap-3">
+                                <div 
+                                    data-id={seg.id}
+                                    className={`group relative flex flex-col gap-2 p-3 rounded-r-lg border-t border-b border-r border-white/5 transition-all duration-200 border-l-4 ${getSectionColor(currentSection)} ${
+                                        isActive ? 'bg-cyan-950/30 border-t-cyan-500/30 border-b-cyan-500/30' : 'bg-neutral-800 hover:border-r-white/20'
+                                    }`}
+                                >
+                                    {isActive && <div className="absolute inset-0 border-2 border-cyan-500/20 rounded-r-lg pointer-events-none" />}
                                     
-                                    <div className="flex items-center gap-2">
-                                        {/* Start / End Inputs */}
+                                    {/* CONTROLS */}
+                                    <div className="flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
-                                            <div className="flex flex-col px-1">
+                                             <div className="flex flex-col px-1">
                                                 <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
-                                                <TimeInput 
-                                                    className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                                    value={seg.start}
-                                                    onChange={(val) => updateSegmentData(idx, { start: val })}
-                                                />
+                                                <TimeInput className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white" value={seg.start} onChange={(val) => updateSegmentData(idx, { start: val })} />
                                             </div>
                                             <div className="w-px h-6 bg-white/10"></div>
                                             <div className="flex flex-col px-1">
                                                 <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
-                                                <TimeInput 
-                                                    className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white"
-                                                    value={seg.end}
-                                                    onChange={(val) => updateSegmentData(idx, { end: val })}
-                                                />
+                                                <TimeInput className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white" value={seg.end} onChange={(val) => updateSegmentData(idx, { end: val })} />
                                             </div>
                                         </div>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className={`flex items-center gap-1 transition-opacity ${isEditingSection ? 'opacity-100' : 'opacity-60 group-hover:opacity-100'}`}>
-                                        
-                                        {/* Inline Section Editor or Add Button */}
-                                        {!isNewSection && (
-                                            isEditingSection ? (
-                                                <div className="flex items-center gap-1 bg-black/40 rounded p-0.5 animate-in slide-in-from-right-2 duration-200 border border-cyan-500/50">
-                                                    <input 
-                                                        autoFocus
-                                                        className="w-20 bg-transparent text-[10px] text-white outline-none px-1 font-bold placeholder-gray-500"
-                                                        placeholder="Name..."
-                                                        defaultValue="Chorus"
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') confirmSectionEdit(idx, e.currentTarget.value);
-                                                            if (e.key === 'Escape') setEditingSectionId(null);
-                                                            e.stopPropagation();
-                                                        }}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    />
-                                                    <button 
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                                            confirmSectionEdit(idx, input.value);
-                                                        }}
-                                                        className="p-1 hover:bg-green-500/20 text-green-400 rounded"
-                                                    >
-                                                        <Check size={12} />
-                                                    </button>
-                                                    <button 
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingSectionId(null);
-                                                        }}
-                                                        className="p-1 hover:bg-red-500/20 text-red-400 rounded"
-                                                    >
-                                                        <X size={12} />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <button 
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setEditingSectionId(seg.id);
-                                                    }}
-                                                    className="p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white flex items-center gap-1"
-                                                    title="Start new section here"
-                                                >
+                                        <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                             {!isNewSection && (
+                                                <button onClick={() => updateSegmentData(idx, { section: 'new section' })} className="p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white" title="New Section">
                                                     <FolderInput size={14} />
                                                 </button>
-                                            )
-                                        )}
-
-                                        <button 
-                                            type="button"
-                                            onClick={() => onSeek(seg.start)}
-                                            className={`p-1.5 rounded-md transition-colors ${isActive ? 'bg-cyan-500 text-black' : 'hover:bg-white/10 text-gray-400'}`}
-                                            title="Play segment"
-                                        >
-                                            <PlayCircle size={14} fill={isActive ? "currentColor" : "none"} />
-                                        </button>
-                                        <button 
-                                            type="button"
-                                            onClick={() => handleDelete(idx)}
-                                            className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
-                                            title="Delete segment"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                             )}
+                                             <button onClick={() => onSeek(seg.start)} className={`p-1.5 rounded-md transition-colors ${isActive ? 'bg-cyan-500 text-black' : 'hover:bg-white/10 text-gray-400'}`}>
+                                                 <PlayCircle size={14} fill={isActive ? "currentColor" : "none"} />
+                                             </button>
+                                             <button onClick={() => handleDeleteSegment(idx)} className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400">
+                                                 <Trash2 size={14} />
+                                             </button>
+                                        </div>
                                     </div>
-                                </div>
-
-                                {/* ROW 2: TEXT EDITING (DEBOUNCED) */}
-                                <div className="relative">
+                                    
+                                    {/* TEXT */}
                                     <DebouncedTextArea
-                                        className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${
-                                            isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'
-                                        }`}
-                                        rows={Math.max(2, seg.text.split('\n').length)}
+                                        className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'}`}
+                                        rows={Math.max(1, seg.text.split('\n').length)}
                                         value={seg.text}
                                         onChange={(val) => updateSegmentData(idx, { text: val }, true)} 
                                         onBlur={() => {}} 
                                         placeholder="Enter lyrics here..."
                                     />
-                                    <div className="absolute bottom-2 right-2 text-[9px] text-gray-600 pointer-events-none">
-                                        {(seg.end - seg.start).toFixed(1)}s
-                                    </div>
+                                </div>
+                             </div>
+                        );
+                    } 
+                    
+                    // --- RENDER EVENT BLOCK ---
+                    else {
+                        const block = item.data;
+                        const isActive = currentTime >= block.start && currentTime <= block.end;
+                        
+                        return (
+                            <div 
+                                key={block.id}
+                                data-id={block.id}
+                                className={`group relative p-3 rounded-lg border border-purple-500/30 transition-all ${
+                                    isActive ? 'bg-purple-950/40 shadow-[0_0_15px_rgba(147,51,234,0.1)]' : 'bg-neutral-900/80 hover:bg-neutral-800'
+                                }`}
+                            >
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 rounded-l-lg"></div>
+
+                                {/* HEADER */}
+                                <div className="flex items-center justify-between mb-2 pl-2">
+                                     <div className="flex items-center gap-2">
+                                         <Zap size={14} className="text-purple-400" />
+                                         <input 
+                                            value={block.label}
+                                            onChange={(e) => updateEventBlock(block.id, { label: e.target.value })}
+                                            className="bg-transparent text-xs font-bold text-purple-200 outline-none w-32 border-b border-transparent hover:border-purple-500/50 focus:border-purple-500"
+                                         />
+                                         
+                                         {/* FADE CONTROLS */}
+                                         <div className="flex items-center gap-1 ml-2 border-l border-white/10 pl-2">
+                                             <button 
+                                                onClick={() => updateEventBlock(block.id, { smoothIn: !block.smoothIn })}
+                                                className={`p-1 rounded ${block.smoothIn ? 'text-green-400 bg-green-950/30' : 'text-gray-600 hover:text-gray-400'}`}
+                                                title="Fade In"
+                                             >
+                                                 <TrendingUp size={12} />
+                                             </button>
+                                             <button 
+                                                onClick={() => updateEventBlock(block.id, { smoothOut: !block.smoothOut })}
+                                                className={`p-1 rounded ${block.smoothOut ? 'text-green-400 bg-green-950/30' : 'text-gray-600 hover:text-gray-400'}`}
+                                                title="Fade Out"
+                                             >
+                                                 <TrendingDown size={12} />
+                                             </button>
+                                         </div>
+                                     </div>
+                                     <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-1 bg-black/40 rounded px-1.5 py-0.5 border border-white/5">
+                                              <TimeInput className="bg-transparent w-12 text-[10px] font-mono text-gray-400 outline-none text-right" value={block.start} onChange={(v) => updateEventBlock(block.id, { start: v })} />
+                                              <span className="text-[10px] text-gray-600">-</span>
+                                              <TimeInput className="bg-transparent w-12 text-[10px] font-mono text-gray-400 outline-none text-right" value={block.end} onChange={(v) => updateEventBlock(block.id, { end: v })} />
+                                          </div>
+                                          <button onClick={() => updateEventBlock(block.id, { collapsed: !block.collapsed })} className="p-1 hover:text-white text-gray-500">
+                                              {block.collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                                          </button>
+                                          <button onClick={() => deleteEventBlock(block.id)} className="p-1 hover:text-red-400 text-gray-500">
+                                              <Trash2 size={14} />
+                                          </button>
+                                     </div>
                                 </div>
 
-                                {/* ROW 3: WORD EDITING TOGGLE */}
-                                <div className="flex justify-center mt-1 border-t border-white/5 pt-1">
-                                    <button 
-                                        type="button"
-                                        onClick={() => toggleExpand(seg.id)}
-                                        className={`text-[10px] flex items-center gap-1 transition-colors ${isExpanded ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'}`}
-                                    >
-                                        {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
-                                        {isExpanded ? "Hide Words" : "Timing"}
-                                    </button>
-                                </div>
-
-                                {/* ROW 4: EXPANDED WORD LIST */}
-                                {isExpanded && (
-                                    <div className="mt-2 space-y-1 bg-black/20 p-2 rounded border border-white/5">
-                                        <div className="grid grid-cols-12 gap-2 text-[9px] font-bold text-gray-500 uppercase mb-1 px-1">
-                                            <div className="col-span-4">Word</div>
-                                            <div className="col-span-3 text-center">Start</div>
-                                            <div className="col-span-3 text-center">End</div>
-                                            <div className="col-span-2 text-center">Play</div>
-                                        </div>
-                                        {seg.words.map((word, wIdx) => {
-                                            const isWordActive = currentTime >= word.start && currentTime <= word.end;
-                                            return (
-                                                <div key={wIdx} className={`grid grid-cols-12 gap-2 items-center p-1 rounded transition-colors ${isWordActive ? 'bg-cyan-900/30' : 'hover:bg-white/5'}`}>
-                                                    <div className="col-span-4 text-xs text-gray-300 truncate font-mono" title={word.word}>
-                                                        {word.word}
-                                                    </div>
-                                                    <div className="col-span-3">
-                                                        <TimeInput 
-                                                            className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
-                                                            value={word.start}
-                                                            onChange={(v) => updateWordData(idx, wIdx, { start: v })}
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-3">
-                                                        <TimeInput 
-                                                            className="w-full bg-black/40 border border-white/10 rounded px-1 py-0.5 text-[10px] font-mono text-center focus:border-cyan-500 outline-none text-gray-400 focus:text-white"
-                                                            value={word.end}
-                                                            onChange={(v) => updateWordData(idx, wIdx, { end: v })}
-                                                        />
-                                                    </div>
-                                                    <div className="col-span-2 flex justify-center">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => onSeek(word.start)}
-                                                            className="text-gray-500 hover:text-cyan-400 p-0.5"
-                                                            title="Play word"
-                                                        >
-                                                            <PlayCircle size={10} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                {/* ACTIVE OVERRIDES INDICATOR (Collapsed Mode) */}
+                                {block.collapsed && Object.keys(block.overrides).length > 0 && (
+                                    <div className="flex flex-wrap gap-1 pl-2">
+                                        {Object.entries(block.overrides).map(([k, v]) => (
+                                            <span key={k} className="text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/20">
+                                                {k.replace('fx_', '').replace('cam_', '')}
+                                            </span>
+                                        ))}
                                     </div>
                                 )}
 
+                                {/* FULL EDITOR (Expanded Mode) */}
+                                {!block.collapsed && (
+                                    <div className="pl-2 grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-white/5">
+                                         {/* VFX */}
+                                         <div>
+                                             <h4 className="text-[9px] font-bold text-gray-500 uppercase mb-2">Visual FX</h4>
+                                             <div className="flex flex-wrap gap-2">
+                                                 <EffectToggle label="Glitch" isActive={block.overrides.fx_chromaticAberration} onToggle={() => toggleOverride(block.id, 'fx_chromaticAberration')} />
+                                                 <EffectToggle label="VHS" isActive={block.overrides.fx_vhs} onToggle={() => toggleOverride(block.id, 'fx_vhs')} />
+                                                 <EffectToggle label="Pixelate" isActive={block.overrides.fx_mosaic} onToggle={() => toggleOverride(block.id, 'fx_mosaic')} />
+                                                 <EffectToggle label="Invert" isActive={block.overrides.fx_invert} onToggle={() => toggleOverride(block.id, 'fx_invert')} />
+                                                 <EffectToggle label="Mirror" isActive={block.overrides.fx_mirror} onToggle={() => toggleOverride(block.id, 'fx_mirror')} />
+                                                 <EffectToggle label="RGB Split" isActive={block.overrides.fx_rgbSplit} onToggle={() => toggleOverride(block.id, 'fx_rgbSplit')} />
+                                                 <EffectToggle label="Scanlines" isActive={block.overrides.fx_scanlines} onToggle={() => toggleOverride(block.id, 'fx_scanlines')} />
+                                                 <EffectToggle label="Kaleidoscope" isActive={block.overrides.fx_kaleidoscope} onToggle={() => toggleOverride(block.id, 'fx_kaleidoscope')} />
+                                                 <EffectToggle label="Halftone" isActive={block.overrides.fx_halftone} onToggle={() => toggleOverride(block.id, 'fx_halftone')} />
+                                                 <EffectToggle label="Old Movie" isActive={block.overrides.fx_oldMovie} onToggle={() => toggleOverride(block.id, 'fx_oldMovie')} />
+                                             </div>
+                                         </div>
+                                         {/* Camera */}
+                                         <div>
+                                             <h4 className="text-[9px] font-bold text-gray-500 uppercase mb-2">Camera</h4>
+                                             <div className="flex flex-wrap gap-2">
+                                                 <EffectToggle label="Shake" isActive={block.overrides.cam_shake} onToggle={() => toggleOverride(block.id, 'cam_shake')} />
+                                                 <EffectToggle label="Zoom Beat" isActive={block.overrides.cam_zoomBeat} onToggle={() => toggleOverride(block.id, 'cam_zoomBeat')} />
+                                                 <EffectToggle label="Hard Kick" isActive={block.overrides.cam_hardKick} onToggle={() => toggleOverride(block.id, 'cam_hardKick')} />
+                                                 <EffectToggle label="Panic" isActive={block.overrides.cam_panic} onToggle={() => toggleOverride(block.id, 'cam_panic')} />
+                                                 <EffectToggle label="Sway" isActive={block.overrides.cam_sway} onToggle={() => toggleOverride(block.id, 'cam_sway')} />
+                                                 <EffectToggle label="Rotate" isActive={block.overrides.cam_rotate} onToggle={() => toggleOverride(block.id, 'cam_rotate')} />
+                                             </div>
+                                             <h4 className="text-[9px] font-bold text-gray-500 uppercase mb-2 mt-3">Particles</h4>
+                                             <EffectToggle label="Particles" isActive={block.overrides.part_enabled} onToggle={() => toggleOverride(block.id, 'part_enabled')} />
+                                         </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    );
+                        );
+                    }
                 })
             )}
             
-            {/* PADDING FOR SCROLL */}
             <div className="h-20"></div>
         </div>
     </div>

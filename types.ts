@@ -1,5 +1,4 @@
 
-
 import 'react';
 
 // Fix for missing JSX.IntrinsicElements types in environment
@@ -79,7 +78,7 @@ export interface AudioVisualizerData {
 }
 
 export interface RenderStatus {
-  state: 'idle' | 'analyzing' | 'rendering' | 'encoding' | 'done';
+  state: 'idle' | 'analyzing' | 'rendering' | 'encoding' | 'done' | 'saving' | 'loading'; // Added saving/loading states
   progress: number;
   totalFrames?: number;
 }
@@ -95,15 +94,65 @@ export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'c
 export type LayoutMode = 'center' | 'alternating';
 export type TextAlignment = 'global' | 'center' | 'left' | 'right' | 'alternating';
 
+// New: Defines which effects can be overridden in a block
+export interface EffectOverrides {
+    // VFX Booleans (undefined means use global, true/false forces state)
+    fx_glow?: boolean;
+    fx_blur?: boolean;
+    fx_chromaticAberration?: boolean; // Glitch
+    fx_vignette?: boolean;
+    fx_scanlines?: boolean;
+    fx_filmGrain?: boolean;
+    fx_mirror?: boolean;
+    fx_invert?: boolean;
+    fx_barrelDistortion?: boolean;
+    fx_mosaic?: boolean;
+    fx_sepia?: boolean;
+    fx_grayscale?: boolean;
+    fx_halftone?: boolean;
+    fx_oldMovie?: boolean;
+    fx_kaleidoscope?: boolean;
+    fx_rgbSplit?: boolean;
+    fx_vhs?: boolean; // Added for override support
+    
+    // Camera Booleans
+    cam_shake?: boolean;
+    cam_zoomBeat?: boolean;
+    cam_rotate?: boolean;
+    cam_sway?: boolean;
+    cam_hardKick?: boolean;
+    cam_panic?: boolean;
+    cam_screenPump?: boolean;
+
+    // Particles
+    part_enabled?: boolean;
+    
+    // Background Image FX (Replaces global list if present)
+    bg_imageEffects?: ImageEffect[];
+}
+
+export interface EventBlock {
+    id: string;
+    start: number;
+    end: number;
+    label: string;
+    overrides: EffectOverrides;
+    collapsed?: boolean; // UI State
+    smoothIn?: boolean; // New: Fade effect in
+    smoothOut?: boolean; // New: Fade effect out
+}
+
+// Deprecated but kept for type compatibility if needed, though we moved to EventBlocks
 export interface KeyframeValues {
   colors_text?: string;
   colors_active?: string;
   background_color?: string;
-  effects_glow?: number;
-  camera_zoom?: number; 
-  camera_rotate?: number;
-  image_effects?: ImageEffect[]; // Changed to array
-  image_effect_speed?: number; // New speed control
+}
+
+export interface AnimationKeyframe {
+  id: string;
+  time: number;
+  values: KeyframeValues;
 }
 
 export interface SectionStyle {
@@ -124,12 +173,6 @@ export interface SectionStyle {
   };
 }
 
-export interface AnimationKeyframe {
-  id: string;
-  time: number;
-  values: KeyframeValues;
-}
-
 export interface AudioLayer {
   id: string;
   name: string;
@@ -138,6 +181,9 @@ export interface AudioLayer {
   muted: boolean;
   solo: boolean;
   duration: number;
+  // New for serialization
+  sourceFile?: Blob; 
+  mimeType?: string;
 }
 
 export interface RendererConfig {
@@ -224,7 +270,19 @@ export interface RendererConfig {
     intro: SectionStyle;
     outro: SectionStyle;
   };
-  keyframes: AnimationKeyframe[];
+  keyframes: AnimationKeyframe[]; // Kept for legacy compat, but UI will use EventBlocks mostly
+}
+
+export interface EncodedAsset {
+    data: string; // Base64
+    mimeType: string;
+    name?: string;
+}
+
+export interface ProjectAssets {
+    audio: Array<{ id: string, name: string, data: string, mimeType: string, volume: number, muted: boolean, solo: boolean }>;
+    background?: { data: string, mimeType: string, type: 'image' | 'video' };
+    fonts: Array<{ name: string, data: string, mimeType: string }>;
 }
 
 export interface ProjectFile {
@@ -233,4 +291,6 @@ export interface ProjectFile {
   name: string;
   lyricData: LyricData;
   config: RendererConfig;
+  eventBlocks?: EventBlock[];
+  assets?: ProjectAssets; // New container for binary data
 }

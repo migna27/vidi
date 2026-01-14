@@ -1,12 +1,13 @@
 
 import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe, EventBlock } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
   data: LyricData;
   config: RendererConfig;
   isPlaying: boolean;
+  eventBlocks?: EventBlock[]; // New Prop
 }
 
 export interface CanvasVideoRendererRef {
@@ -72,12 +73,12 @@ const FRAGMENT_SHADER = `
   uniform float u_style_stars;
   uniform float u_style_matrix;
   
-  // FX Flags
+  // FX Intensities (0.0 to 1.0)
   uniform float u_fx_vhs;
   uniform float u_fx_glitch;
   uniform float u_fx_pixelate;
-  uniform float u_fx_rgb_split;     // Static RGB Split
-  uniform float u_fx_chromatic;     // Reactive Chromatic Aberration
+  uniform float u_fx_rgb_split;
+  uniform float u_fx_chromatic;
   uniform float u_fx_thermal;
   uniform float u_fx_liquid;
   uniform float u_fx_mirror;
@@ -89,7 +90,7 @@ const FRAGMENT_SHADER = `
   uniform float u_fx_kaleidoscope;
   uniform float u_fx_halftone;
   uniform float u_fx_grayscale;
-  uniform float u_fx_invert_beat;   // Invert on Beat
+  uniform float u_fx_invert_beat;
   uniform float u_fx_sepia;
   
   varying vec2 vUv;
@@ -137,19 +138,13 @@ const FRAGMENT_SHADER = `
       return r * vec2(cos(a), sin(a)) + 0.5;
   }
 
-  vec2 applyBarrelDistortion(vec2 uv) {
+  vec2 applyBarrelDistortion(vec2 uv, float amount) {
       vec2 p = uv - 0.5;
       float d = length(p);
-      float power = 0.5 * u_intensity;
+      float power = 0.5 * u_intensity * amount; // Scale by effect amount
       
-      // Distort
-      // (1.0 + d*d*power) creates the curve
       vec2 distorted = p * (1.0 + d * d * power);
-      
-      // Zoom Correction: Scale down slightly to fit the distortion or Scale up to remove black edges
-      // For "Improve Distort", usually we want to zoom IN slightly so we don't see edges
-      float zoom = 1.0 / (1.0 + 0.25 * power); // Inverse scale
-      
+      float zoom = 1.0 / (1.0 + 0.25 * power);
       return (distorted * zoom) + 0.5;
   }
 
@@ -157,35 +152,37 @@ const FRAGMENT_SHADER = `
       return vec2(abs(uv.x - 0.5) + 0.5, uv.y);
   }
 
-  vec2 applyLiquid(vec2 uv) {
+  vec2 applyLiquid(vec2 uv, float amount) {
       float t = u_time * u_speed;
-      float xOffset = sin(uv.y * 10.0 + t) * 0.02 * u_intensity;
-      float yOffset = cos(uv.x * 8.0 + t * 1.5) * 0.02 * u_intensity;
+      float xOffset = sin(uv.y * 10.0 + t) * 0.02 * u_intensity * amount;
+      float yOffset = cos(uv.x * 8.0 + t * 1.5) * 0.02 * u_intensity * amount;
       return uv + vec2(xOffset, yOffset);
   }
 
-  vec2 applyGlitchUV(vec2 uv) {
+  vec2 applyGlitchUV(vec2 uv, float amount) {
       float t = floor(u_time * 15.0 * u_speed); 
       float block = noise(vec2(0.0, uv.y * 10.0 + t)); 
       float displacement = 0.0;
       if (block > 0.8) {
-          displacement = (random(vec2(t, uv.y)) - 0.5) * 0.2 * u_intensity * (1.0 + u_bass);
+          displacement = (random(vec2(t, uv.y)) - 0.5) * 0.2 * u_intensity * amount * (1.0 + u_bass);
       }
       return vec2(uv.x + displacement, uv.y);
   }
 
-  vec2 applyPixelate(vec2 uv) {
-      float pixels = 256.0 - (u_intensity * 200.0);
-      pixels = max(10.0, pixels);
-      vec2 d = vec2(1.0 / pixels, 1.0 / pixels);
+  vec2 applyPixelate(vec2 uv, float amount) {
+      // Logic: if amount is 0, pixels is HUGE (no pixelation). If amount is 1, pixels is small.
+      // We map amount 0..1 to a scale factor.
+      // Base pixels = 2000.0 (high res). Target pixels = 50.0 (low res).
+      float pFactor = mix(2048.0, 32.0, amount);
+      vec2 d = vec2(1.0 / pFactor, 1.0 / pFactor);
       return vec2(floor(uv.x / d.x) * d.x, floor(uv.y / d.y) * d.y);
   }
   
-  vec2 applyVHSDistortion(vec2 uv) {
+  vec2 applyVHSDistortion(vec2 uv, float amount) {
      float tracking = 0.0;
-     if (uv.y < 0.1) tracking = sin(uv.y * 100.0 + u_time * 20.0) * 0.02 * u_intensity;
+     if (uv.y < 0.1) tracking = sin(uv.y * 100.0 + u_time * 20.0) * 0.02 * u_intensity * amount;
      float jitter = 0.0;
-     if (random(vec2(u_time, 0.0)) > 0.95) jitter = (random(vec2(u_time, 1.0)) - 0.5) * 0.01 * u_intensity;
+     if (random(vec2(u_time, 0.0)) > 0.95) jitter = (random(vec2(u_time, 1.0)) - 0.5) * 0.01 * u_intensity * amount;
      return vec2(uv.x + tracking, uv.y + jitter);
   }
 
@@ -295,15 +292,26 @@ const FRAGMENT_SHADER = `
     uv = applyCamera(uv);
     
     // --- 2. UV DISTORTION (Order Matters) ---
-    // Kaleidoscope first to mirror everything
-    if (u_fx_kaleidoscope > 0.5) uv = applyKaleidoscope(uv);
+    // Note: For distortion, we mix UV coordinates if needed, or scale the distortion amount
     
-    if (u_fx_barrel > 0.5) uv = applyBarrelDistortion(uv);
-    if (u_fx_mirror > 0.5) uv = applyMirror(uv);
-    if (u_fx_liquid > 0.5) uv = applyLiquid(uv);
-    if (u_fx_glitch > 0.5) uv = applyGlitchUV(uv);
-    if (u_fx_vhs > 0.5) uv = applyVHSDistortion(uv);
-    if (u_fx_pixelate > 0.5) uv = applyPixelate(uv);
+    // Kaleidoscope: Just mix UVs if fading
+    if (u_fx_kaleidoscope > 0.0) {
+        uv = mix(uv, applyKaleidoscope(uv), u_fx_kaleidoscope); 
+    }
+    
+    if (u_fx_barrel > 0.0) uv = applyBarrelDistortion(uv, u_fx_barrel);
+    
+    // Mirror: Mix UVs
+    if (u_fx_mirror > 0.0) {
+        uv = mix(uv, applyMirror(uv), u_fx_mirror);
+    }
+    
+    if (u_fx_liquid > 0.0) uv = applyLiquid(uv, u_fx_liquid);
+    if (u_fx_glitch > 0.0) uv = applyGlitchUV(uv, u_fx_glitch);
+    if (u_fx_vhs > 0.0) uv = applyVHSDistortion(uv, u_fx_vhs);
+    
+    // Pixelate: We use the uniform to control pixel count inside the function
+    if (u_fx_pixelate > 0.0) uv = applyPixelate(uv, u_fx_pixelate);
 
     vec3 color = vec3(0.0);
 
@@ -316,15 +324,16 @@ const FRAGMENT_SHADER = `
             float shift = 0.0;
             
             // Reactive CA (distance based * bass)
-            if (u_fx_chromatic > 0.5) {
+            if (u_fx_chromatic > 0.0) {
                 float dist = distance(uv, vec2(0.5));
-                shift += dist * 0.05 * u_bass * u_intensity;
+                shift += dist * 0.05 * u_bass * u_intensity * u_fx_chromatic;
             }
             
             // Static RGB Split or VHS
-            if (u_fx_rgb_split > 0.5 || u_fx_vhs > 0.5) {
-                shift += 0.005 * u_intensity;
-                if (u_fx_vhs > 0.5) shift += 0.003;
+            float rgbAmount = max(u_fx_rgb_split, u_fx_vhs);
+            if (rgbAmount > 0.0) {
+                shift += 0.005 * u_intensity * rgbAmount;
+                if (u_fx_vhs > 0.0) shift += 0.003 * u_fx_vhs;
             }
             
             if (shift > 0.0001) {
@@ -345,21 +354,21 @@ const FRAGMENT_SHADER = `
         color *= (0.5 + u_intensity);
     }
 
-    // --- 4. COLOR FX ---
-    if (u_fx_thermal > 0.5) color = applyThermal(color);
-    if (u_fx_old_movie > 0.5) color = applyOldMovie(color, uv);
-    if (u_fx_halftone > 0.5) color = applyHalftone(color, uv);
+    // --- 4. COLOR FX (Using Mix for smooth transitions) ---
+    if (u_fx_thermal > 0.0) color = mix(color, applyThermal(color), u_fx_thermal);
+    if (u_fx_old_movie > 0.0) color = mix(color, applyOldMovie(color, uv), u_fx_old_movie);
+    if (u_fx_halftone > 0.0) color = mix(color, applyHalftone(color, uv), u_fx_halftone);
     
-    if (u_fx_scanlines > 0.5) color = applyScanlines(color, uv);
-    if (u_fx_film_grain > 0.5 || u_fx_vhs > 0.5) color = applyFilmGrain(color, uv);
-    if (u_fx_vhs > 0.5) color = applyVHSColor(color, uv);
+    if (u_fx_scanlines > 0.0) color = mix(color, applyScanlines(color, uv), u_fx_scanlines);
+    if (u_fx_film_grain > 0.0) color = mix(color, applyFilmGrain(color, uv), u_fx_film_grain);
+    if (u_fx_vhs > 0.0) color = mix(color, applyVHSColor(color, uv), u_fx_vhs);
     
-    if (u_fx_invert_beat > 0.5) color = applyInvertBeat(color);
+    if (u_fx_invert_beat > 0.0) color = mix(color, applyInvertBeat(color), u_fx_invert_beat);
     
-    if (u_fx_grayscale > 0.5) color = vec3(luminance(color));
-    if (u_fx_sepia > 0.5) color = vec3(luminance(color)) * vec3(1.2, 1.0, 0.8);
+    if (u_fx_grayscale > 0.0) color = mix(color, vec3(luminance(color)), u_fx_grayscale);
+    if (u_fx_sepia > 0.0) color = mix(color, vec3(luminance(color)) * vec3(1.2, 1.0, 0.8), u_fx_sepia);
     
-    if (u_fx_vignette > 0.5) color = applyVignette(color, uv);
+    if (u_fx_vignette > 0.0) color = mix(color, applyVignette(color, uv), u_fx_vignette);
 
     gl_FragColor = vec4(color, 1.0);
   }
@@ -408,7 +417,8 @@ const lerpColor = (start: string, end: string, t: number) => {
 export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVideoRendererProps>(({
   data,
   config,
-  isPlaying
+  isPlaying,
+  eventBlocks = []
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wordsByLineCache = useRef<Map<string, Word[][]>>(new Map());
@@ -640,15 +650,58 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     lastTimeRef.current = time;
 
-    // --- KEYFRAME INTERPOLATION ---
+    // --- DETERMINE ACTIVE CONFIG (EventBlock Overrides) ---
+    // Find active block. If overlapping, the last one takes precedence.
+    const activeBlock = eventBlocks.find(b => time >= b.start && time <= b.end);
+    
+    // CALCULATE FADE FACTOR FOR SMOOTH TRANSITIONS
+    let fadeFactor = 1.0;
+    if (activeBlock) {
+        const fadeDur = 1.0; // 1 second default fade duration
+        // Fade In
+        if (activeBlock.smoothIn && time < activeBlock.start + fadeDur) {
+            fadeFactor = Math.max(0, (time - activeBlock.start) / fadeDur);
+        }
+        // Fade Out
+        if (activeBlock.smoothOut && time > activeBlock.end - fadeDur) {
+            fadeFactor = Math.max(0, (activeBlock.end - time) / fadeDur);
+        }
+    }
+
+    // Helper to get effective boolean value as intensity (0..1)
+    const getFx = (key: keyof typeof config.effects, overrideKey: keyof typeof activeBlock.overrides) => {
+        let val = config.effects[key] ? 1.0 : 0.0;
+        
+        if (activeBlock && activeBlock.overrides && activeBlock.overrides[overrideKey] !== undefined) {
+            // If overridden, we use the override value scaled by fadeFactor
+            // If block says TRUE, we fade from global to 1 (or 0 to 1 if global was 0)
+            // But simplifying: If override exists, it becomes the target state.
+            // We transition from 'Global State' to 'Override State'.
+            // Actually, the simpler implementation requested: "Fade the effect".
+            // So if Override is TRUE, intensity is fadeFactor. If False, it stays 0.
+            
+            // Simpler approach for this version: If overridden to TRUE, return fadeFactor.
+            const override = activeBlock.overrides[overrideKey];
+            if (override === true) return fadeFactor;
+            if (override === false) return 0.0;
+        }
+        return val;
+    };
+    
+    const getCam = (key: keyof typeof config.camera, overrideKey: keyof typeof activeBlock.overrides) => {
+        let val = config.camera[key];
+        if (activeBlock && activeBlock.overrides && activeBlock.overrides[overrideKey] !== undefined) {
+             const override = activeBlock.overrides[overrideKey];
+             // If override is TRUE, return true (we handle intensity via fadeFactor later)
+             if (override !== undefined) return override; 
+        }
+        return val;
+    };
+
     let effectiveColorsActive = config.colors.active;
     let effectiveColorsText = config.colors.text;
     let effectiveBgColor = config.background.color;
-    let effectiveZoomOffset = 0;
-    let effectiveRotateOffset = 0;
-    let effectiveImageEffects = config.background.imageEffects || [];
-    let effectiveEffectSpeed = config.background.imageEffectSpeed || 1.0;
-    
+    // For now, let's keep Keyframe Interpolation for colors only
     const keyframes = config.keyframes || [];
     if (keyframes.length > 0) {
         let prevKeyframe: AnimationKeyframe | null = null;
@@ -661,15 +714,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             const t = Math.min(1, Math.max(0, (time - prevKeyframe.time) / (nextKeyframe.time - prevKeyframe.time)));
             effectiveColorsActive = lerpColor(prevKeyframe.values.colors_active || config.colors.active, nextKeyframe.values.colors_active || config.colors.active, t);
             effectiveBgColor = lerpColor(prevKeyframe.values.background_color || config.background.color, nextKeyframe.values.background_color || config.background.color, t);
-            effectiveZoomOffset = lerp(prevKeyframe.values.camera_zoom || 0, nextKeyframe.values.camera_zoom || 0, t);
-            effectiveRotateOffset = lerp(prevKeyframe.values.camera_rotate || 0, nextKeyframe.values.camera_rotate || 0, t);
         } else if (prevKeyframe) {
              effectiveColorsActive = prevKeyframe.values.colors_active || config.colors.active;
              effectiveBgColor = prevKeyframe.values.background_color || config.background.color;
-             effectiveZoomOffset = prevKeyframe.values.camera_zoom || 0;
-             effectiveRotateOffset = prevKeyframe.values.camera_rotate || 0;
-             if (prevKeyframe.values.image_effects) effectiveImageEffects = prevKeyframe.values.image_effects;
-             if (prevKeyframe.values.image_effect_speed) effectiveEffectSpeed = prevKeyframe.values.image_effect_speed;
         }
     }
 
@@ -680,51 +727,62 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (!audioEnabled) { bass=0; mid=0; high=0; } 
     else { bass *= sensitivity; mid *= sensitivity; high *= sensitivity; }
 
-    // --- GLOBAL CAMERA PHYSICS ---
+    // --- GLOBAL CAMERA PHYSICS (With Overrides & Fading) ---
     let camX = 0;
     let camY = 0;
-    let camRot = effectiveRotateOffset;
-    let camZoom = 1.0 + effectiveZoomOffset;
+    let camRot = 0; 
+    let camZoom = 1.0;
+
+    // Apply fading to camera movements if they are triggered by the block
+    // Logic: If global is ON, fadeFactor doesn't really apply (it's constant).
+    // If global is OFF and Block is ON, apply fadeFactor.
+    // If global is ON and Block is OFF, we should probably inverse fade?
+    // For simplicity: We calculate raw offsets, then scale them if they come from the block.
+    
+    // We'll trust that getCam returns the boolean state.
+    // We apply fadeFactor ONLY if the active block caused the state to be TRUE (and global was false),
+    // OR if global was true.
+    // Actually, just scaling the intensity by fadeFactor *if inside block* is a decent approximation for "fade in event".
+    const camIntensity = activeBlock ? fadeFactor : 1.0; 
 
     // 1. Shake
-    if (config.camera.shake) {
-        const shakeAmt = 5 * (1 + bass * 3);
+    if (getCam('shake', 'cam_shake')) {
+        const shakeAmt = 5 * (1 + bass * 3) * camIntensity;
         camX += (Math.random() - 0.5) * shakeAmt;
         camY += (Math.random() - 0.5) * shakeAmt;
     }
 
     // 2. Zoom Beat / Screen Pump
-    if (config.camera.zoomBeat && audioEnabled) {
-        camZoom += bass * 0.15;
+    if (getCam('zoomBeat', 'cam_zoomBeat') && audioEnabled) {
+        camZoom += (bass * 0.15 * camIntensity);
     }
-    if (config.camera.screenPump && audioEnabled) {
-        // More subtle, rhythmic pump
-        camZoom += Math.sin(time * 8.0) * 0.05 * bass;
+    if (getCam('screenPump', 'cam_screenPump') && audioEnabled) {
+        camZoom += (Math.sin(time * 8.0) * 0.05 * bass * camIntensity);
     }
 
     // 3. Sway
-    if (config.camera.sway) {
-        camX += Math.sin(time * 0.5) * 20;
-        camRot += Math.cos(time * 0.3) * 0.02;
+    if (getCam('sway', 'cam_sway')) {
+        camX += Math.sin(time * 0.5) * 20 * camIntensity;
+        camRot += Math.cos(time * 0.3) * 0.02 * camIntensity;
     }
 
     // 4. Rotate (Auto)
-    if (config.camera.rotate) {
-        camRot += Math.sin(time * 0.2) * 0.05;
+    if (getCam('rotate', 'cam_rotate')) {
+        camRot += Math.sin(time * 0.2) * 0.05 * camIntensity;
     }
 
     // 5. Hard Kick (Bass trigger)
-    if (config.camera.hardKick && audioEnabled && bass > 0.7) {
-        camZoom += 0.2;
-        camRot += (Math.random() - 0.5) * 0.1;
+    if (getCam('hardKick', 'cam_hardKick') && audioEnabled && bass > 0.7) {
+        camZoom += 0.2 * camIntensity;
+        camRot += (Math.random() - 0.5) * 0.1 * camIntensity;
     }
 
     // 6. Panic
-    if (config.camera.panic) {
+    if (getCam('panic', 'cam_panic')) {
         const panicSpeed = time * 20.0;
-        camX += Math.sin(panicSpeed) * 30 * (1 + high);
-        camY += Math.cos(panicSpeed * 0.8) * 30 * (1 + high);
-        camZoom += Math.sin(time * 10.0) * 0.1;
+        camX += Math.sin(panicSpeed) * 30 * (1 + high) * camIntensity;
+        camY += Math.cos(panicSpeed * 0.8) * 30 * (1 + high) * camIntensity;
+        camZoom += Math.sin(time * 10.0) * 0.1 * camIntensity;
     }
 
     // ===========================
@@ -783,7 +841,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_mid, mid);
             gl.uniform1f(uniforms.u_high, high);
             gl.uniform1f(uniforms.u_intensity, config.background.intensity || 0.5);
-            gl.uniform1f(uniforms.u_speed, effectiveEffectSpeed);
+            gl.uniform1f(uniforms.u_speed, config.background.imageEffectSpeed || 1.0);
 
             // Procedural Styles
             const styles = Array.isArray(config.background.proceduralStyle) 
@@ -795,28 +853,38 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_style_stars, styles.includes('stars') ? 1.0 : 0.0);
             gl.uniform1f(uniforms.u_style_matrix, styles.includes('matrix') ? 1.0 : 0.0);
 
-            // Post-Processing Effects
-            const effects = effectiveImageEffects;
-            gl.uniform1f(uniforms.u_fx_vhs, effects.includes('vhs-stripes') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_glitch, effects.includes('red-error') || effects.includes('dark-error') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_pixelate, effects.includes('pixel-noise') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_rgb_split, config.effects.rgbSplit ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_chromatic, effects.includes('chromatic-shift') || config.effects.chromaticAberration ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_thermal, effects.includes('thermal') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_liquid, effects.includes('liquid-warp') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_mirror, effects.includes('mirror-x') || config.effects.mirror ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_scanlines, effects.includes('scan-drift') || config.effects.scanlines ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_film_grain, config.effects.filmGrain ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_vignette, config.effects.vignette ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_barrel, config.effects.barrelDistortion ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_old_movie, config.effects.oldMovie ? 1.0 : 0.0);
+            // Post-Processing Effects - Resolve with Overrides
+            const effects = activeBlock?.overrides.bg_imageEffects ?? config.background.imageEffects ?? [];
             
-            // New FX
-            gl.uniform1f(uniforms.u_fx_kaleidoscope, config.effects.kaleidoscope ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_halftone, config.effects.halftone ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_grayscale, config.effects.grayscale ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_invert_beat, config.effects.invert ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_sepia, config.effects.sepia ? 1.0 : 0.0);
+            // Updated VHS Logic to support Override
+            const vhsOverride = activeBlock?.overrides.fx_vhs;
+            const vhsEnabled = vhsOverride !== undefined ? vhsOverride : effects.includes('vhs-stripes');
+            // We can't really "fade" the boolean flag check for VHS logic easily without shader mixing
+            // But we can fade the intensity inside applyVHSColor
+            gl.uniform1f(uniforms.u_fx_vhs, vhsEnabled ? fadeFactor : 0.0);
+            
+            gl.uniform1f(uniforms.u_fx_glitch, (effects.includes('red-error') || effects.includes('dark-error')) ? 1.0 : 0.0);
+            
+            // Pixelate / Mosaic
+            gl.uniform1f(uniforms.u_fx_pixelate, (effects.includes('pixel-noise') || getFx('mosaic', 'fx_mosaic') > 0) ? getFx('mosaic', 'fx_mosaic') : 0.0);
+            
+            gl.uniform1f(uniforms.u_fx_rgb_split, getFx('rgbSplit', 'fx_rgbSplit'));
+            gl.uniform1f(uniforms.u_fx_chromatic, (effects.includes('chromatic-shift') || getFx('chromaticAberration', 'fx_chromaticAberration') > 0) ? getFx('chromaticAberration', 'fx_chromaticAberration') : 0.0);
+            gl.uniform1f(uniforms.u_fx_thermal, (effects.includes('thermal') || getFx('thermal', 'fx_thermal' as any) > 0) ? getFx('thermal', 'fx_thermal' as any) : 0.0); 
+            gl.uniform1f(uniforms.u_fx_liquid, effects.includes('liquid-warp') ? 1.0 : 0.0);
+            gl.uniform1f(uniforms.u_fx_mirror, (effects.includes('mirror-x') || getFx('mirror', 'fx_mirror') > 0) ? getFx('mirror', 'fx_mirror') : 0.0);
+            gl.uniform1f(uniforms.u_fx_scanlines, (effects.includes('scan-drift') || getFx('scanlines', 'fx_scanlines') > 0) ? getFx('scanlines', 'fx_scanlines') : 0.0);
+            
+            gl.uniform1f(uniforms.u_fx_film_grain, getFx('filmGrain', 'fx_filmGrain'));
+            gl.uniform1f(uniforms.u_fx_vignette, getFx('vignette', 'fx_vignette'));
+            gl.uniform1f(uniforms.u_fx_barrel, getFx('barrelDistortion', 'fx_barrelDistortion'));
+            gl.uniform1f(uniforms.u_fx_old_movie, getFx('oldMovie', 'fx_oldMovie'));
+            
+            gl.uniform1f(uniforms.u_fx_kaleidoscope, getFx('kaleidoscope', 'fx_kaleidoscope'));
+            gl.uniform1f(uniforms.u_fx_halftone, getFx('halftone', 'fx_halftone'));
+            gl.uniform1f(uniforms.u_fx_grayscale, getFx('grayscale', 'fx_grayscale'));
+            gl.uniform1f(uniforms.u_fx_invert_beat, getFx('invert', 'fx_invert'));
+            gl.uniform1f(uniforms.u_fx_sepia, getFx('sepia', 'fx_sepia'));
             
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             
@@ -848,7 +916,9 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
 
     // --- PARTICLES ---
-    if (config.particles.enabled && !isAlphaRender) {
+    const particlesEnabled = activeBlock?.overrides.part_enabled ?? config.particles.enabled;
+
+    if (particlesEnabled && !isAlphaRender) {
          particlesRef.current.forEach(p => {
              // Logic for movement (Same as before)
              const isTetris = config.particles.shape === 'tetris';
