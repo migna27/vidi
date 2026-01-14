@@ -1,13 +1,15 @@
 
+
 import React, { useRef, useEffect, useLayoutEffect, useImperativeHandle, forwardRef } from 'react';
-import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe, EventBlock } from '../types';
+import { LyricData, Word, AudioVisualizerData, RendererConfig, AnimationKeyframe, EventBlock, CustomEffect } from '../types';
 import { RESOLUTIONS } from '../constants';
 
 interface CanvasVideoRendererProps {
   data: LyricData;
   config: RendererConfig;
   isPlaying: boolean;
-  eventBlocks?: EventBlock[]; // New Prop
+  eventBlocks?: EventBlock[];
+  customEffects?: CustomEffect[]; // New prop for custom FX
 }
 
 export interface CanvasVideoRendererRef {
@@ -46,7 +48,7 @@ const VERTEX_SHADER = `
   }
 `;
 
-const FRAGMENT_SHADER = `
+const FRAGMENT_SHADER_BASE = `
   precision mediump float;
   
   uniform float u_time;
@@ -285,6 +287,9 @@ const FRAGMENT_SHADER = `
       return mix(col, 1.0 - col, invert);
   }
 
+  // --- CUSTOM SHADER INJECTION POINT ---
+  // CUSTOM_FUNCTIONS_HERE
+
   void main() {
     vec2 uv = vUv;
     
@@ -370,6 +375,9 @@ const FRAGMENT_SHADER = `
     
     if (u_fx_vignette > 0.0) color = mix(color, applyVignette(color, uv), u_fx_vignette);
 
+    // --- CUSTOM EFFECTS PIPELINE ---
+    // CUSTOM_CALLS_HERE
+
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -418,7 +426,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
   data,
   config,
   isPlaying,
-  eventBlocks = []
+  eventBlocks = [],
+  customEffects = []
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wordsByLineCache = useRef<Map<string, Word[][]>>(new Map());
@@ -468,8 +477,32 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
           return shader;
       };
 
+      // --- DYNAMIC SHADER CONSTRUCTION ---
+      // 1. Identify active custom shaders
+      const activeShaders = customEffects.filter(fx => fx.type === 'shader' && fx.active);
+      
+      // 2. Build injection strings
+      let customFunctions = '';
+      let customCalls = '';
+      
+      activeShaders.forEach((fx, index) => {
+          // We rename the user's `effect_main` to something unique to avoid collision
+          // We assume user code uses `effect_main` as entry point.
+          // Simple string replace for now.
+          const uniqueName = `custom_fx_${index}_${fx.id.replace(/-/g, '_')}`;
+          const modifiedCode = fx.code.replace(/effect_main/g, uniqueName);
+          
+          customFunctions += `\n// Custom FX: ${fx.name}\n${modifiedCode}\n`;
+          customCalls += `\n    color = ${uniqueName}(color, uv);\n`;
+      });
+
+      // 3. Assemble Fragment Shader
+      const finalFragmentShader = FRAGMENT_SHADER_BASE
+          .replace('// CUSTOM_FUNCTIONS_HERE', customFunctions)
+          .replace('// CUSTOM_CALLS_HERE', customCalls);
+
       const vs = createShader(gl.VERTEX_SHADER, VERTEX_SHADER);
-      const fs = createShader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
+      const fs = createShader(gl.FRAGMENT_SHADER, finalFragmentShader);
       
       if (!vs || !fs) return;
 
@@ -549,7 +582,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-  }, []);
+      // Re-compile logic triggers when customEffects change
+  }, [customEffects]);
 
   useEffect(() => {
       if (glCanvasRef.current && glContextRef.current) {
@@ -733,16 +767,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     let camRot = 0; 
     let camZoom = 1.0;
 
-    // Apply fading to camera movements if they are triggered by the block
-    // Logic: If global is ON, fadeFactor doesn't really apply (it's constant).
-    // If global is OFF and Block is ON, apply fadeFactor.
-    // If global is ON and Block is OFF, we should probably inverse fade?
-    // For simplicity: We calculate raw offsets, then scale them if they come from the block.
-    
-    // We'll trust that getCam returns the boolean state.
-    // We apply fadeFactor ONLY if the active block caused the state to be TRUE (and global was false),
-    // OR if global was true.
-    // Actually, just scaling the intensity by fadeFactor *if inside block* is a decent approximation for "fade in event".
     const camIntensity = activeBlock ? fadeFactor : 1.0; 
 
     // 1. Shake
@@ -912,6 +936,24 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.scale(camZoom, camZoom);
     // 4. Translate (Inverse)
     ctx.translate(-camX, -camY);
+
+    // --- CUSTOM JS CAMERA EFFECTS ---
+    // Injected here to affect the canvas transform context before drawing text/particles
+    if (customEffects && customEffects.length > 0) {
+        customEffects.forEach(fx => {
+            if (fx.type === 'camera' && fx.active) {
+                try {
+                    // Safe-ish eval: create a function with specific parameters
+                    // params: ctx, time, width, height, bass, mid, high
+                    const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', fx.code);
+                    cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high);
+                } catch (e) {
+                    // Silently fail or console log once? Better not to spam console in render loop
+                }
+            }
+        });
+    }
+
     // 5. Un-Center
     ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
 

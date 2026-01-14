@@ -36,6 +36,56 @@ export const DEFAULT_LYRICS: LyricData = {
   "segments": []
 };
 
+// --- CUSTOM FX TEMPLATES ---
+
+export const TEMPLATE_SHADER_GLSL = `// Custom Shader Effect
+// Available Uniforms:
+// float u_time;       // Current time in seconds
+// vec2 u_resolution;  // Canvas dimensions (width, height)
+// float u_bass;       // Bass intensity (0.0 to 1.0)
+// float u_mid;        // Mid intensity (0.0 to 1.0)
+// float u_high;       // High intensity (0.0 to 1.0)
+
+vec3 effect_main(vec3 color, vec2 uv) {
+    // Example: Red Tint pulsating with Bass
+    float pulse = 0.5 + 0.5 * sin(u_time * 5.0);
+    vec3 tint = vec3(1.0, 0.2, 0.2) * (u_bass * 2.0 + 0.5);
+    
+    // Mix original color with tint
+    return mix(color, color * tint, 0.5);
+}`;
+
+export const TEMPLATE_CAMERA_JS = `// Custom Camera Script (JavaScript)
+// Available Variables:
+// ctx: CanvasRenderingContext2D
+// time: number (seconds)
+// width: number (canvas width)
+// height: number (canvas height)
+// bass: number (0-1)
+// mid: number (0-1)
+// high: number (0-1)
+
+// Example: Spiral Rotation on Bass
+if (bass > 0.5) {
+   const angle = Math.sin(time * 2) * 0.1 * bass;
+   ctx.rotate(angle);
+   
+   // Slight zoom
+   const zoom = 1 + (bass * 0.05);
+   ctx.scale(zoom, zoom);
+}`;
+
+export const TEMPLATE_EVENT_PRESET = `{
+  "label": "Heavy Drop",
+  "overrides": {
+    "fx_chromaticAberration": true,
+    "fx_scanlines": true,
+    "fx_invert": true,
+    "cam_shake": true,
+    "cam_hardKick": true
+  }
+}`;
+
 const DEFAULT_SECTION_STYLES = {
   verse: { enabled: false, fontScale: 1.0, layout: { align: 'global' as const } },
   chorus: { enabled: true, colors_active: '#ff00ff', effects_glow_boost: 0.2, camera_zoom_boost: 0.2, fontScale: 1.1, layout: { align: 'global' as const } },

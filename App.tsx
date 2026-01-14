@@ -1,10 +1,11 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
 import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
-import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer, EventBlock } from './types';
+import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer, EventBlock, CustomEffect } from './types';
 import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2, FileVideo, Package } from 'lucide-react';
 
 // @ts-ignore
@@ -191,6 +192,26 @@ export default function App() {
   const [eventBlocks, setEventBlocks] = useState<EventBlock[]>([]);
   const [audioLayers, setAudioLayers] = useState<AudioLayer[]>([]);
   
+  // Custom Effects State
+  const [customEffects, setCustomEffects] = useState<CustomEffect[]>([]);
+
+  // Load Custom Effects from LocalStorage on mount
+  useEffect(() => {
+      const stored = localStorage.getItem('kf_custom_effects');
+      if (stored) {
+          try {
+              setCustomEffects(JSON.parse(stored));
+          } catch(e) { console.error("Failed to load custom effects", e); }
+      }
+  }, []);
+
+  // Save Custom Effects to LocalStorage when changed
+  useEffect(() => {
+      if (customEffects.length > 0) {
+          localStorage.setItem('kf_custom_effects', JSON.stringify(customEffects));
+      }
+  }, [customEffects]);
+  
   // Temporary storage for non-audio assets to be bundled on save
   const backgroundFileRef = useRef<{ file: Blob, type: 'image' | 'video' } | null>(null);
   const fontFilesRef = useRef<Map<string, Blob>>(new Map());
@@ -244,7 +265,7 @@ export default function App() {
   // Invalidate cache if PROJECT changes
   useEffect(() => {
     if (cachedBlob) setCachedBlob(null);
-  }, [data, rendererConfig, audioLayers, eventBlocks]);
+  }, [data, rendererConfig, audioLayers, eventBlocks, customEffects]);
 
   const handleResetProject = () => {
     if (confirm("Reset project? All unsaved changes will be lost.")) {
@@ -548,7 +569,8 @@ export default function App() {
                   audio: audioAssets.filter(a => a !== null) as any,
                   background: backgroundAsset,
                   fonts: fontAssets
-              }
+              },
+              customEffects: customEffects // Save custom FX too
           };
           
           const blob = new Blob([JSON.stringify(project)], { type: 'application/json' });
@@ -583,6 +605,7 @@ export default function App() {
                   if (project.lyricData) setData(project.lyricData);
                   if (project.config) setRendererConfig(project.config);
                   if (project.eventBlocks) setEventBlocks(project.eventBlocks);
+                  if (project.customEffects) setCustomEffects(project.customEffects);
 
                   // Initialize Audio Context
                   initAudioEngine();
@@ -895,8 +918,10 @@ export default function App() {
                  onResetProject={handleResetProject}
                  eventBlocks={eventBlocks}
                  onUpdateEventBlocks={setEventBlocks}
-                 // Pass asset handler to store blobs
                  onAssetLoaded={handleAssetLoaded}
+                 // Custom FX Props
+                 customEffects={customEffects}
+                 onUpdateCustomEffects={setCustomEffects}
               />
           </div>
 
@@ -918,6 +943,7 @@ export default function App() {
                           config={rendererConfig}
                           isPlaying={isPlaying}
                           eventBlocks={eventBlocks}
+                          customEffects={customEffects}
                        />
                        
                        {audioLayers.length === 0 && (

@@ -1,8 +1,7 @@
-
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify } from 'lucide-react';
-import { TEMPLATES, FONTS, RESOLUTIONS } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle, EventBlock } from '../types';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play } from 'lucide-react';
+import { TEMPLATES, FONTS, RESOLUTIONS, TEMPLATE_SHADER_GLSL, TEMPLATE_CAMERA_JS, TEMPLATE_EVENT_PRESET } from '../constants';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle, EventBlock, CustomEffect, CustomEffectType } from '../types';
 import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
@@ -29,10 +28,13 @@ interface SettingsPanelProps {
   onUpdateEventBlocks: (blocks: EventBlock[]) => void;
   // Asset Management (New)
   onAssetLoaded?: (type: 'background' | 'font', file: File, meta?: string) => void;
+  // Custom Effects (New)
+  customEffects?: CustomEffect[];
+  onUpdateCustomEffects?: (fx: CustomEffect[]) => void;
 }
 
 // Helper Components
-const ToggleInput = ({ label, value, onChange }: { label: string, value: boolean, onChange: (v: boolean) => void }) => (
+const ToggleInput: React.FC<{ label: string, value: boolean, onChange: (v: boolean) => void }> = ({ label, value, onChange }) => (
   <div className="flex items-center justify-between">
     <span className="text-sm font-medium text-gray-400">{label}</span>
     <button
@@ -44,52 +46,7 @@ const ToggleInput = ({ label, value, onChange }: { label: string, value: boolean
   </div>
 );
 
-const MultiToggleInput = ({ label, values, options, onChange }: { label: string, values: string[], options: string[], onChange: (v: string[]) => void }) => (
-    <div className="flex flex-col gap-2">
-      <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
-      <div className="flex flex-wrap gap-2">
-        {options.map(opt => {
-            const isActive = values.includes(opt);
-            return (
-                <button
-                    key={opt}
-                    onClick={() => {
-                        if (isActive) {
-                            onChange(values.filter(v => v !== opt));
-                        } else {
-                            onChange([...values, opt]);
-                        }
-                    }}
-                    className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition-all border ${
-                        isActive 
-                        ? 'bg-cyan-600 text-white border-cyan-500' 
-                        : 'bg-neutral-800 text-gray-400 border-white/5 hover:border-white/20'
-                    }`}
-                >
-                    {opt}
-                </button>
-            );
-        })}
-      </div>
-    </div>
-);
-
-const SelectInput = ({ label, value, options, onChange }: { label: string, value: string, options: string[], onChange: (v: any) => void }) => (
-  <div className="flex flex-col gap-1">
-    <label className="text-xs font-bold text-gray-500 uppercase">{label}</label>
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="bg-neutral-900 border border-white/10 rounded-md px-2 py-1.5 text-sm text-gray-200 focus:border-cyan-500 outline-none"
-    >
-      {options.map(opt => (
-        <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
-      ))}
-    </select>
-  </div>
-);
-
-const ColorInput = ({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) => (
+const ColorInput: React.FC<{ label: string, value: string, onChange: (v: string) => void }> = ({ label, value, onChange }) => (
   <div className="flex items-center justify-between bg-neutral-900 p-2 rounded-md border border-white/5">
     <span className="text-xs font-bold text-gray-400">{label}</span>
     <div className="flex items-center gap-2">
@@ -104,17 +61,6 @@ const ColorInput = ({ label, value, onChange }: { label: string, value: string, 
     </div>
   </div>
 );
-
-const IMAGE_EFFECT_OPTIONS = [
-    'bright-happy', 'zoom-slow', 'chromatic-shift', 'vhs-stripes', 'liquid-warp', 
-    'scan-drift', 'ghosting', 'pixel-noise', 'mirror-x', 
-    'dark-error', 'red-error', 'alert', 'thermal'
-];
-
-const PROCEDURAL_STYLE_OPTIONS = [
-    'grid', 'stars', 'plasma', 'tunnel', 'matrix', 'gradient-wave', 'hexagons', 'kaleidoscope', 'dna',
-    'nebula', 'fire', 'circuit', 'rain','digital-heartbeat'
-];
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ 
     config, 
@@ -132,13 +78,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     onResetProject,
     eventBlocks,
     onUpdateEventBlocks,
-    onAssetLoaded
+    onAssetLoaded,
+    customEffects = [],
+    onUpdateCustomEffects
 }) => {
-  const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'sections' | 'templates' | 'customize' >('project');
+  const [activeTab, setActiveTab] = useState<'project' | 'lyrics' | 'sections' | 'templates' | 'customize' | 'library' | 'guide'>('project');
+  const [editingEffect, setEditingEffect] = useState<CustomEffect | null>(null);
+  
   const bgInputRef = useRef<HTMLInputElement>(null);
   const fontInputRef = useRef<HTMLInputElement>(null);
-  
-  // Refs for Project Files
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const srtInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
@@ -164,10 +112,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       onUpdate(newConfig);
   };
 
-  const updateColor = (key: keyof RendererConfig['colors'], value: string) => {
-    updateNested('colors', key, value);
-  };
-
   const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -178,8 +122,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           newConfig.background.type = type;
           newConfig.background.url = url;
           onUpdate(newConfig);
-          
-          // Notify App to store asset
           if(onAssetLoaded) onAssetLoaded('background', file);
       }
   };
@@ -195,7 +137,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                fontFace.load().then((loadedFace) => {
                    document.fonts.add(loadedFace);
                    updateNested('font', 'family', fontName);
-                   // Notify App to store asset
                    if(onAssetLoaded) onAssetLoaded('font', file, fontName);
                }).catch(err => console.error("Font load failed", err));
            }
@@ -228,9 +169,54 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const file = e.target.files?.[0];
     if (file) {
         onAudioLayerAdd(file);
-        // Reset input
         if (audioInputRef.current) audioInputRef.current.value = '';
     }
+  };
+
+  // --- CUSTOM EFFECT HANDLERS ---
+  const addNewEffect = (type: CustomEffectType) => {
+      const newFx: CustomEffect = {
+          id: `fx-${Date.now()}`,
+          name: `New ${type === 'shader' ? 'Shader' : 'Camera'}`,
+          type,
+          code: type === 'shader' ? TEMPLATE_SHADER_GLSL : TEMPLATE_CAMERA_JS,
+          active: false,
+          description: "My custom effect"
+      };
+      if (onUpdateCustomEffects) onUpdateCustomEffects([...customEffects, newFx]);
+      setEditingEffect(newFx);
+  };
+
+  const saveEffect = (fx: CustomEffect) => {
+      if (!onUpdateCustomEffects) return;
+      const exists = customEffects.find(e => e.id === fx.id);
+      if (exists) {
+          onUpdateCustomEffects(customEffects.map(e => e.id === fx.id ? fx : e));
+      } else {
+          onUpdateCustomEffects([...customEffects, fx]);
+      }
+      setEditingEffect(null);
+  };
+
+  const deleteEffect = (id: string) => {
+      if (!onUpdateCustomEffects || !confirm("Delete this effect permanently?")) return;
+      onUpdateCustomEffects(customEffects.filter(e => e.id !== id));
+      if (editingEffect?.id === id) setEditingEffect(null);
+  };
+
+  const toggleEffect = (id: string) => {
+      if (!onUpdateCustomEffects) return;
+      onUpdateCustomEffects(customEffects.map(e => e.id === id ? { ...e, active: !e.active } : e));
+  };
+
+  const downloadTemplate = (content: string, filename: string) => {
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
   };
 
   return (
@@ -238,46 +224,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       
       {/* Tab Navigation */}
       <div className="flex border-b border-white/5 bg-neutral-900 overflow-x-auto no-scrollbar">
-        <button 
-          onClick={() => setActiveTab('project')}
-          title="Project Files"
-          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'project' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
-        >
-          <FolderOpen size={16} />
-          Files
-        </button>
-        <button 
-          onClick={() => setActiveTab('lyrics')}
-          title="Timeline"
-          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'lyrics' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
-        >
-          <Clock size={16} />
-          Timeline
-        </button>
-        <button 
-          onClick={() => setActiveTab('sections')}
-          title="Sections"
-          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'sections' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
-        >
-          <Tags size={16} />
-          Parts
-        </button>
-        <button 
-          onClick={() => setActiveTab('templates')}
-          title="Templates"
-          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'templates' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
-        >
-          <LayoutTemplate size={16} />
-          Presets
-        </button>
-        <button 
-          onClick={() => setActiveTab('customize')}
-          title="Customize"
-          className={`flex-1 min-w-[60px] py-4 text-xs font-bold flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === 'customize' ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
-        >
-          <Sliders size={16} />
-          Style
-        </button>
+        {[
+            { id: 'project', icon: FolderOpen, label: 'Files' },
+            { id: 'lyrics', icon: Clock, label: 'Timeline' },
+            { id: 'sections', icon: Tags, label: 'Parts' },
+            { id: 'templates', icon: LayoutTemplate, label: 'Presets' },
+            { id: 'customize', icon: Sliders, label: 'Style' },
+            { id: 'library', icon: Code, label: 'Library' },
+            { id: 'guide', icon: BookOpen, label: 'Guide' },
+        ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              title={tab.label}
+              className={`flex-1 min-w-[50px] py-4 text-[10px] font-bold uppercase flex flex-col items-center justify-center gap-1 transition-colors border-b-2 ${activeTab === tab.id ? 'text-cyan-400 border-cyan-400 bg-white/5' : 'text-gray-500 hover:text-gray-300 border-transparent'}`}
+            >
+              <tab.icon size={16} />
+              {tab.label}
+            </button>
+        ))}
       </div>
 
       {/* Content Area */}
@@ -395,9 +360,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             className="hidden"
                         />
                     </div>
-                    <p className="text-[10px] text-gray-500 mt-2 text-center">
-                        Go to "Timeline" tab to edit imported data.
-                    </p>
                 </section>
 
                 <section>
@@ -426,9 +388,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 </section>
 
                 <section className="pt-4 border-t border-white/5">
-                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                         <RotateCcw size={14}/> Reset
-                    </h3>
                     <button
                         onClick={onResetProject}
                         className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-950/30 hover:bg-red-900/50 text-red-400 rounded-lg border border-red-900/50 transition-colors text-sm font-bold"
@@ -440,7 +399,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
              </div>
         )}
 
-        {/* TIMELINE TAB (Now includes both Lyrics and Events) */}
+        {/* TIMELINE TAB */}
         {activeTab === 'lyrics' && (
             <TimelineEditor 
                 data={data} 
@@ -452,46 +411,170 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             />
         )}
 
-        {/* ... SECTIONS, TEMPLATES, CUSTOMIZE ... */}
-        {/* Same as before, just kept for brevity in XML if not changing logic */ }
-        {activeTab === 'sections' && (
-             <div className="p-4 space-y-6">
-                 {/* ... Sections content ... */}
-                 {['verse', 'chorus', 'bridge', 'intro', 'outro'].map((sectionKey) => {
-                     const key = sectionKey as SectionType;
-                     const style = config.sectionStyles?.[key] || { enabled: false };
-                     return (
-                         <div key={key} className="bg-neutral-900 border border-white/5 rounded-lg p-3">
-                             <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
-                                 <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest">{key}</h3>
-                                 <ToggleInput 
-                                    label=""
-                                    value={style.enabled} 
-                                    onChange={(v) => updateSectionStyle(key, 'enabled', v)}
-                                 />
-                             </div>
-                             {style.enabled && (
-                                <div className="space-y-3">
-                                   {/* ... Existing Section UI ... */}
-                                    <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                        <span>Font Scale</span>
-                                        <span>{Math.round((style.fontScale || 1.0) * 100)}%</span>
-                                    </div>
-                                    <input 
-                                        type="range" min="0.5" max="2.0" step="0.1" 
-                                        value={style.fontScale || 1.0} 
-                                        onChange={(e) => updateSectionStyle(key, 'fontScale', parseFloat(e.target.value))}
-                                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                                    />
-                                     <ColorInput label="Active Color" value={style.colors_active || config.colors.active} onChange={(v) => updateSectionStyle(key, 'colors_active', v)} />
+        {/* CUSTOMIZE TAB */}
+        {activeTab === 'customize' && (
+          <div className="p-4 space-y-6">
+              <section>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Aperture size={14}/> Global Effects</h3>
+                  <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-2">
+                        <ToggleInput label="Chromatic Ab." value={config.effects.chromaticAberration} onChange={(v) => updateNested('effects', 'chromaticAberration', v)} />
+                        <ToggleInput label="Scanlines" value={config.effects.scanlines} onChange={(v) => updateNested('effects', 'scanlines', v)} />
+                        <ToggleInput label="Vignette" value={config.effects.vignette} onChange={(v) => updateNested('effects', 'vignette', v)} />
+                        <ToggleInput label="Film Grain" value={config.effects.filmGrain} onChange={(v) => updateNested('effects', 'filmGrain', v)} />
+                        <ToggleInput label="Glow" value={config.effects.glow > 0} onChange={(v) => updateNested('effects', 'glow', v ? 0.8 : 0)} />
+                  </div>
+              </section>
+
+              {/* ACTIVE CUSTOM EFFECTS LIST IN CUSTOMIZE TAB */}
+              {customEffects && customEffects.length > 0 && (
+                  <section>
+                      <h3 className="text-xs font-bold text-purple-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Code size={14}/> User Effects</h3>
+                      <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-2">
+                          {customEffects.map(fx => (
+                              <ToggleInput 
+                                key={fx.id} 
+                                label={fx.name} 
+                                value={fx.active} 
+                                onChange={() => toggleEffect(fx.id)} 
+                              />
+                          ))}
+                      </div>
+                  </section>
+              )}
+          </div>
+        )}
+
+        {/* LIBRARY TAB */}
+        {activeTab === 'library' && (
+            <div className="p-4 space-y-6">
+                {!editingEffect ? (
+                    <>
+                        <div className="flex gap-2 mb-4">
+                            <button onClick={() => addNewEffect('shader')} className="flex-1 bg-cyan-900/40 border border-cyan-500/30 hover:bg-cyan-800/50 text-cyan-200 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                                <Plus size={14}/> New Shader FX
+                            </button>
+                            <button onClick={() => addNewEffect('camera')} className="flex-1 bg-purple-900/40 border border-purple-500/30 hover:bg-purple-800/50 text-purple-200 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
+                                <Plus size={14}/> New Camera FX
+                            </button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {customEffects.length === 0 ? (
+                                <div className="text-center text-gray-500 py-8 text-xs italic">
+                                    No custom effects created yet.<br/>Use the buttons above or download templates from the Guide.
                                 </div>
-                             )}
-                         </div>
-                     )
-                 })}
-             </div>
+                            ) : (
+                                customEffects.map(fx => (
+                                    <div key={fx.id} className="bg-neutral-900 border border-white/5 rounded-lg p-3 group">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${fx.type === 'shader' ? 'bg-cyan-500' : 'bg-purple-500'}`} />
+                                                <span className="font-bold text-sm text-gray-200">{fx.name}</span>
+                                                {fx.active && <span className="text-[9px] bg-green-900 text-green-300 px-1 rounded uppercase">Active</span>}
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <button onClick={() => setEditingEffect(fx)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white" title="Edit Code">
+                                                    <Edit2 size={14}/>
+                                                </button>
+                                                <button onClick={() => toggleEffect(fx.id)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white" title={fx.active ? "Disable" : "Enable"}>
+                                                    <Play size={14} fill={fx.active ? "currentColor" : "none"}/>
+                                                </button>
+                                                <button onClick={() => deleteEffect(fx.id)} className="p-1.5 hover:bg-red-900/50 rounded text-gray-400 hover:text-red-400" title="Delete">
+                                                    <Trash2 size={14}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 line-clamp-2 font-mono bg-black/30 p-1.5 rounded">
+                                            {fx.description || "// No description"}
+                                        </p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex flex-col h-full">
+                        <div className="flex items-center justify-between mb-2">
+                            <input 
+                                value={editingEffect.name}
+                                onChange={(e) => setEditingEffect({...editingEffect, name: e.target.value})}
+                                className="bg-transparent text-sm font-bold border-b border-transparent focus:border-cyan-500 outline-none w-1/2"
+                                placeholder="Effect Name"
+                            />
+                            <div className="flex gap-2">
+                                <button onClick={() => setEditingEffect(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
+                                <button onClick={() => saveEffect(editingEffect)} className="text-xs bg-cyan-600 px-3 py-1 rounded text-white font-bold">Save</button>
+                            </div>
+                        </div>
+                        <input 
+                            value={editingEffect.description || ''}
+                            onChange={(e) => setEditingEffect({...editingEffect, description: e.target.value})}
+                            className="bg-neutral-900 text-xs text-gray-400 p-2 rounded mb-2 w-full outline-none"
+                            placeholder="Short description..."
+                        />
+                        <div className="flex-1 bg-neutral-950 rounded border border-white/10 p-2 overflow-hidden flex flex-col">
+                            <div className="text-[10px] text-gray-500 mb-1 font-mono">{editingEffect.type === 'shader' ? '// GLSL Fragment Shader Body' : '// JavaScript Camera Logic'}</div>
+                            <textarea 
+                                value={editingEffect.code}
+                                onChange={(e) => setEditingEffect({...editingEffect, code: e.target.value})}
+                                className="flex-1 bg-transparent text-xs font-mono text-green-400 outline-none resize-none leading-relaxed"
+                                spellCheck={false}
+                            />
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-2">
+                            {editingEffect.type === 'shader' 
+                                ? "Writes to 'color'. Use 'effect_main(vec3 color, vec2 uv)'." 
+                                : "Executes per frame. Access 'ctx', 'time', 'bass'."}
+                        </p>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* GUIDE TAB */}
+        {activeTab === 'guide' && (
+            <div className="p-4 space-y-6">
+                <div className="text-center mb-4">
+                    <BookOpen className="mx-auto text-cyan-500 mb-2" size={24}/>
+                    <h2 className="text-sm font-bold text-white">Developer Guide</h2>
+                    <p className="text-[10px] text-gray-400">Templates & Documentation</p>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-cyan-400">GLSL Shader Template</span>
+                            <button onClick={() => downloadTemplate(TEMPLATE_SHADER_GLSL, 'custom_shader.glsl')} className="text-gray-400 hover:text-white"><Download size={14}/></button>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mb-2">
+                            Create custom visual effects using GLSL fragment shader logic. The function <code>effect_main</code> receives color and UVs.
+                        </p>
+                    </div>
+
+                    <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-purple-400">JS Camera Template</span>
+                            <button onClick={() => downloadTemplate(TEMPLATE_CAMERA_JS, 'custom_camera.js')} className="text-gray-400 hover:text-white"><Download size={14}/></button>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mb-2">
+                            Manipulate the Canvas context 2D directly using JavaScript. Useful for custom rotations, zooms, and reactive transformations.
+                        </p>
+                    </div>
+
+                    <div className="bg-neutral-900 p-3 rounded-lg border border-white/5">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs font-bold text-yellow-400">Event Preset JSON</span>
+                            <button onClick={() => downloadTemplate(TEMPLATE_EVENT_PRESET, 'event_preset.json')} className="text-gray-400 hover:text-white"><Download size={14}/></button>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mb-2">
+                            Define a reusable block of effect overrides (glitches, shakes, toggles) to drag into your timeline.
+                        </p>
+                    </div>
+                </div>
+            </div>
         )}
         
+        {/* TEMPLATES & SECTIONS TABS (Standard Content) */}
         {activeTab === 'templates' && (
           <div className="p-4 grid grid-cols-2 gap-3">
              {TEMPLATES.map(t => (
@@ -513,20 +596,40 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
         )}
 
-        {activeTab === 'customize' && (
-          <div className="p-4 space-y-6">
-              {/* ... All existing customization UI ... */}
-              <section>
-                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Aperture size={14}/> Global Effects</h3>
-                  <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-2">
-                        {/* Shortened for brevity, assuming standard ToggleInputs here */}
-                        <ToggleInput label="Chromatic Ab." value={config.effects.chromaticAberration} onChange={(v) => updateNested('effects', 'chromaticAberration', v)} />
-                        <ToggleInput label="Scanlines" value={config.effects.scanlines} onChange={(v) => updateNested('effects', 'scanlines', v)} />
-                        <ToggleInput label="Vignette" value={config.effects.vignette} onChange={(v) => updateNested('effects', 'vignette', v)} />
-                        {/* ... etc */}
-                  </div>
-              </section>
-          </div>
+        {activeTab === 'sections' && (
+             <div className="p-4 space-y-6">
+                 {['verse', 'chorus', 'bridge', 'intro', 'outro'].map((sectionKey) => {
+                     const key = sectionKey as SectionType;
+                     const style = config.sectionStyles?.[key] || { enabled: false };
+                     return (
+                         <div key={key} className="bg-neutral-900 border border-white/5 rounded-lg p-3">
+                             <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
+                                 <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest">{key}</h3>
+                                 <ToggleInput 
+                                    label=""
+                                    value={style.enabled} 
+                                    onChange={(v) => updateSectionStyle(key, 'enabled', v)}
+                                 />
+                             </div>
+                             {style.enabled && (
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                                        <span>Font Scale</span>
+                                        <span>{Math.round((style.fontScale || 1.0) * 100)}%</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0.5" max="2.0" step="0.1" 
+                                        value={style.fontScale || 1.0} 
+                                        onChange={(e) => updateSectionStyle(key, 'fontScale', parseFloat(e.target.value))}
+                                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                                    />
+                                     <ColorInput label="Active Color" value={style.colors_active || config.colors.active} onChange={(v) => updateSectionStyle(key, 'colors_active', v)} />
+                                </div>
+                             )}
+                         </div>
+                     )
+                 })}
+             </div>
         )}
       </div>
     </div>

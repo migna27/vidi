@@ -1,4 +1,5 @@
 
+
 import 'react';
 
 // Fix for missing JSX.IntrinsicElements types in environment
@@ -94,6 +95,18 @@ export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'c
 export type LayoutMode = 'center' | 'alternating';
 export type TextAlignment = 'global' | 'center' | 'left' | 'right' | 'alternating';
 
+// New: Custom Effect Type
+export type CustomEffectType = 'shader' | 'camera';
+
+export interface CustomEffect {
+    id: string;
+    name: string;
+    type: CustomEffectType;
+    code: string;
+    active: boolean; // Is currently enabled in the render pipeline
+    description?: string;
+}
+
 // New: Defines which effects can be overridden in a block
 export interface EffectOverrides {
     // VFX Booleans (undefined means use global, true/false forces state)
@@ -129,6 +142,9 @@ export interface EffectOverrides {
     
     // Background Image FX (Replaces global list if present)
     bg_imageEffects?: ImageEffect[];
+
+    // Custom Effects Overrides (ID -> enabled/disabled)
+    custom_fx?: Record<string, boolean>;
 }
 
 export interface EventBlock {
@@ -293,4 +309,5 @@ export interface ProjectFile {
   config: RendererConfig;
   eventBlocks?: EventBlock[];
   assets?: ProjectAssets; // New container for binary data
+  customEffects?: CustomEffect[]; // Export custom effects with project
 }
