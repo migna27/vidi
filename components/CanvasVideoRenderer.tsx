@@ -695,67 +695,120 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     lastTimeRef.current = time;
 
-    // --- DETERMINE ACTIVE CONFIG (EventBlock Overrides) ---
-    // Find active block. If overlapping, the last one takes precedence.
-    const activeBlock = eventBlocks.find(b => time >= b.start && time <= b.end);
-    
-    // CALCULATE FADE FACTOR FOR SMOOTH TRANSITIONS
-    let fadeFactor = 1.0;
-    if (activeBlock) {
-        const fadeDur = 1.0; // 1 second default fade duration
-        // Fade In
-        if (activeBlock.smoothIn && time < activeBlock.start + fadeDur) {
-            fadeFactor = Math.max(0, (time - activeBlock.start) / fadeDur);
-        }
-        // Fade Out
-        if (activeBlock.smoothOut && time > activeBlock.end - fadeDur) {
-            fadeFactor = Math.max(0, (activeBlock.end - time) / fadeDur);
-        }
-    }
+    // --- DETERMINE ACTIVE CONFIG (Simultaneous Overrides) ---
+    // Filter for ALL active blocks, allowing overlapping effects
+    const activeBlocks = eventBlocks.filter(b => time >= b.start && time <= b.end);
 
-    // Helper to get effective boolean value as intensity (0..1)
-    const getFx = (key: keyof typeof config.effects, overrideKey: keyof typeof activeBlock.overrides) => {
-        let val = config.effects[key] ? 1.0 : 0.0;
+    // Calculate individual fade factors for each active block
+    const blockFades = new Map<string, number>();
+    activeBlocks.forEach(b => {
+        let f = 1.0;
+        const fadeDur = 1.0; // 1 second transition
+        if (b.smoothIn && time < b.start + fadeDur) f = Math.max(0, (time - b.start) / fadeDur);
+        if (b.smoothOut && time > b.end - fadeDur) f = Math.max(0, (b.end - time) / fadeDur);
+        blockFades.set(b.id, f);
+    });
+
+    // Helper: Iterate through all active blocks. 
+    // If ANY block enables an effect (true), it turns ON with that block's fade.
+    // If ANY block explicitly disables (false), it turns OFF.
+    // Logic: Explicit Disable > Explicit Enable > Global.
+    // For intensity, we take the MAX intensity from any enabling block.
+    
+    const getFx = (key: keyof typeof config.effects, overrideKey: keyof typeof config.effects) => { // overrideKey usually maps 1:1 in our types but using key for simplicity
+        let isActive = config.effects[key];
+        let maxIntensity = isActive ? 1.0 : 0.0;
+        let overridden = false;
+
+        // Check overrides
+        for (const block of activeBlocks) {
+            // @ts-ignore - Dynamic key access on overrides
+            const val = block.overrides[`fx_${overrideKey}`]; 
+            if (val !== undefined) {
+                overridden = true;
+                if (val === false) {
+                    // Explicit OFF overrides everything in this simplified model?
+                    // Or does strict stacking apply? Let's say explicit OFF kills it.
+                    isActive = false;
+                    maxIntensity = 0.0; 
+                } else if (val === true) {
+                    // Enable
+                    isActive = true;
+                    const fade = blockFades.get(block.id) || 1.0;
+                    // Blend intensity: If multiple blocks enable it, pick the strongest signal
+                    maxIntensity = Math.max(maxIntensity, fade);
+                }
+            }
+        }
         
-        if (activeBlock && activeBlock.overrides && activeBlock.overrides[overrideKey] !== undefined) {
-            // If overridden, we use the override value scaled by fadeFactor
-            // If block says TRUE, we fade from global to 1 (or 0 to 1 if global was 0)
-            // But simplifying: If override exists, it becomes the target state.
-            // We transition from 'Global State' to 'Override State'.
-            // Actually, the simpler implementation requested: "Fade the effect".
-            // So if Override is TRUE, intensity is fadeFactor. If False, it stays 0.
-            
-            // Simpler approach for this version: If overridden to TRUE, return fadeFactor.
-            const override = activeBlock.overrides[overrideKey];
-            if (override === true) return fadeFactor;
-            if (override === false) return 0.0;
-        }
-        return val;
+        // Return 0-1 intensity. If active but no blocks, intensity is 1 (or 0 if global off)
+        // If blocks define it, use the block fade.
+        return isActive ? maxIntensity : 0.0;
     };
+
+    // Specific mapping needed because types key != overrides key sometimes (e.g. key=chromaticAberration, override=fx_chromaticAberration)
+    // Actually in types.ts: fx_chromaticAberration maps to config.effects.chromaticAberration
     
-    const getCam = (key: keyof typeof config.camera, overrideKey: keyof typeof activeBlock.overrides) => {
-        let val = config.camera[key];
-        if (activeBlock && activeBlock.overrides && activeBlock.overrides[overrideKey] !== undefined) {
-             const override = activeBlock.overrides[overrideKey];
-             // If override is TRUE, return true (we handle intensity via fadeFactor later)
-             if (override !== undefined) return override; 
+    // Helper for Camera
+    const getCam = (key: keyof typeof config.camera, overrideKey: string) => {
+        let isActive = config.camera[key];
+        let maxIntensity = 1.0; // Camera effects usually just boolean triggers, but we can fade their intensity via the block fade factor used later.
+        
+        let foundOverride = false;
+        let activeFromBlock = false;
+        let maxFade = 0.0;
+
+        for (const block of activeBlocks) {
+            // @ts-ignore
+            const val = block.overrides[overrideKey];
+            if (val !== undefined) {
+                foundOverride = true;
+                if (val === true) {
+                    activeFromBlock = true;
+                    maxFade = Math.max(maxFade, blockFades.get(block.id) || 1.0);
+                } else {
+                    // If one block sets it to false, does it kill others? 
+                    // Let's assume OR logic for camera triggers usually, unless strictly disabled.
+                    // But to keep it simple: Last block usually wins in "state", but for overlapping we merge.
+                    // Let's go with: If ANY block says TRUE, it's TRUE (weighted).
+                }
+            }
         }
-        return val;
+        
+        if (foundOverride) {
+            return activeFromBlock ? maxFade : 0.0;
+        }
+        // Fallback to global
+        // If global is ON, return 1.0 (no fade needed)
+        // If global OFF, return 0.0
+        return isActive ? 1.0 : 0.0;
     };
-    
-    // Helper for Custom Effects Override (Global vs EventBlock)
-    const getCustomFxActive = (fx: CustomEffect) => {
-        if (activeBlock && activeBlock.overrides && activeBlock.overrides.custom_fx) {
-             const override = activeBlock.overrides.custom_fx[fx.id];
-             if (override !== undefined) return override;
+
+    // Helper for Custom FX
+    const getCustomFxIntensity = (fx: CustomEffect) => {
+        let isActive = fx.active;
+        let intensity = isActive ? 1.0 : 0.0;
+
+        for (const block of activeBlocks) {
+             const override = block.overrides.custom_fx?.[fx.id];
+             if (override !== undefined) {
+                 if (override === true) {
+                     isActive = true;
+                     intensity = Math.max(intensity, blockFades.get(block.id) || 1.0);
+                 } else {
+                     isActive = false;
+                     intensity = 0.0; // explicit disable
+                 }
+             }
         }
-        return fx.active;
+        return isActive ? intensity : 0.0;
     };
 
     let effectiveColorsActive = config.colors.active;
     let effectiveColorsText = config.colors.text;
     let effectiveBgColor = config.background.color;
-    // For now, let's keep Keyframe Interpolation for colors only
+    
+    // Keyframe Interpolation (Legacy support)
     const keyframes = config.keyframes || [];
     if (keyframes.length > 0) {
         let prevKeyframe: AnimationKeyframe | null = null;
@@ -787,46 +840,53 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     let camRot = 0; 
     let camZoom = 1.0;
 
-    const camIntensity = activeBlock ? fadeFactor : 1.0; 
-
     // 1. Shake
-    if (getCam('shake', 'cam_shake')) {
-        const shakeAmt = 5 * (1 + bass * 3) * camIntensity;
+    const shakeIntensity = getCam('shake', 'cam_shake');
+    if (shakeIntensity > 0) {
+        const shakeAmt = 5 * (1 + bass * 3) * shakeIntensity;
         camX += (Math.random() - 0.5) * shakeAmt;
         camY += (Math.random() - 0.5) * shakeAmt;
     }
 
-    // 2. Zoom Beat / Screen Pump
-    if (getCam('zoomBeat', 'cam_zoomBeat') && audioEnabled) {
-        camZoom += (bass * 0.15 * camIntensity);
+    // 2. Zoom Beat
+    const zoomBeatIntensity = getCam('zoomBeat', 'cam_zoomBeat');
+    if (zoomBeatIntensity > 0 && audioEnabled) {
+        camZoom += (bass * 0.15 * zoomBeatIntensity);
     }
-    if (getCam('screenPump', 'cam_screenPump') && audioEnabled) {
-        camZoom += (Math.sin(time * 8.0) * 0.05 * bass * camIntensity);
+    
+    // Screen Pump
+    const screenPumpIntensity = getCam('screenPump', 'cam_screenPump');
+    if (screenPumpIntensity > 0 && audioEnabled) {
+        camZoom += (Math.sin(time * 8.0) * 0.05 * bass * screenPumpIntensity);
     }
 
     // 3. Sway
-    if (getCam('sway', 'cam_sway')) {
-        camX += Math.sin(time * 0.5) * 20 * camIntensity;
-        camRot += Math.cos(time * 0.3) * 0.02 * camIntensity;
+    const swayIntensity = getCam('sway', 'cam_sway');
+    if (swayIntensity > 0) {
+        camX += Math.sin(time * 0.5) * 20 * swayIntensity;
+        camRot += Math.cos(time * 0.3) * 0.02 * swayIntensity;
     }
 
-    // 4. Rotate (Auto)
-    if (getCam('rotate', 'cam_rotate')) {
-        camRot += Math.sin(time * 0.2) * 0.05 * camIntensity;
+    // 4. Rotate
+    const rotateIntensity = getCam('rotate', 'cam_rotate');
+    if (rotateIntensity > 0) {
+        camRot += Math.sin(time * 0.2) * 0.05 * rotateIntensity;
     }
 
-    // 5. Hard Kick (Bass trigger)
-    if (getCam('hardKick', 'cam_hardKick') && audioEnabled && bass > 0.7) {
-        camZoom += 0.2 * camIntensity;
-        camRot += (Math.random() - 0.5) * 0.1 * camIntensity;
+    // 5. Hard Kick
+    const hardKickIntensity = getCam('hardKick', 'cam_hardKick');
+    if (hardKickIntensity > 0 && audioEnabled && bass > 0.7) {
+        camZoom += 0.2 * hardKickIntensity;
+        camRot += (Math.random() - 0.5) * 0.1 * hardKickIntensity;
     }
 
     // 6. Panic
-    if (getCam('panic', 'cam_panic')) {
+    const panicIntensity = getCam('panic', 'cam_panic');
+    if (panicIntensity > 0) {
         const panicSpeed = time * 20.0;
-        camX += Math.sin(panicSpeed) * 30 * (1 + high) * camIntensity;
-        camY += Math.cos(panicSpeed * 0.8) * 30 * (1 + high) * camIntensity;
-        camZoom += Math.sin(time * 10.0) * 0.1 * camIntensity;
+        camX += Math.sin(panicSpeed) * 30 * (1 + high) * panicIntensity;
+        camY += Math.cos(panicSpeed * 0.8) * 30 * (1 + high) * panicIntensity;
+        camZoom += Math.sin(time * 10.0) * 0.1 * panicIntensity;
     }
 
     // ===========================
@@ -837,7 +897,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     if (isAlphaRender) {
         ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     } else {
-        // ALWAYS use WebGL now for background to support unified effects
         if (glContextRef.current && glProgramRef.current) {
             const gl = glContextRef.current;
             const program = glProgramRef.current;
@@ -859,7 +918,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bgVideoRef.current);
                    useTexture = 1;
                 } catch(e) {
-                   // Sometimes video isn't ready in Safari/Firefox immediately
                    useTexture = 0; 
                 }
             }
@@ -870,8 +928,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_use_texture, useTexture);
             gl.uniform1i(uniforms.u_texture, 0);
             
-            // PASS CAMERA TO SHADER FOR SYNC
-            gl.uniform2f(uniforms.u_cam_offset, camX / CANVAS_WIDTH, camY / CANVAS_HEIGHT); // Normalize offset 0..1
+            // PASS CAMERA TO SHADER
+            gl.uniform2f(uniforms.u_cam_offset, camX / CANVAS_WIDTH, camY / CANVAS_HEIGHT);
             gl.uniform1f(uniforms.u_cam_zoom, camZoom);
             gl.uniform1f(uniforms.u_cam_rotate, camRot);
 
@@ -898,37 +956,48 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_style_matrix, styles.includes('matrix') ? 1.0 : 0.0);
 
             // Post-Processing Effects - Resolve with Overrides
-            const effects = activeBlock?.overrides.bg_imageEffects ?? config.background.imageEffects ?? [];
+            const effects = config.background.imageEffects ?? [];
             
-            // Updated VHS Logic to support Override
-            const vhsOverride = activeBlock?.overrides.fx_vhs;
-            const vhsEnabled = vhsOverride !== undefined ? vhsOverride : effects.includes('vhs-stripes');
-            // We can't really "fade" the boolean flag check for VHS logic easily without shader mixing
-            // But we can fade the intensity inside applyVHSColor
-            gl.uniform1f(uniforms.u_fx_vhs, vhsEnabled ? fadeFactor : 0.0);
+            // Updated VHS Logic
+            const vhsOverrideVal = activeBlocks.reduce((acc, b) => {
+                 if (b.overrides.fx_vhs === true) return Math.max(acc, blockFades.get(b.id) || 0);
+                 return acc;
+            }, 0);
+            const vhsEnabled = vhsOverrideVal > 0 || effects.includes('vhs-stripes');
+            gl.uniform1f(uniforms.u_fx_vhs, vhsEnabled ? (vhsOverrideVal || 1.0) : 0.0);
             
             gl.uniform1f(uniforms.u_fx_glitch, (effects.includes('red-error') || effects.includes('dark-error')) ? 1.0 : 0.0);
             
-            // Pixelate / Mosaic
-            gl.uniform1f(uniforms.u_fx_pixelate, (effects.includes('pixel-noise') || getFx('mosaic', 'fx_mosaic') > 0) ? getFx('mosaic', 'fx_mosaic') : 0.0);
+            // Use getFx helper for dynamic/fadeable props
+            const pixelateVal = getFx('mosaic', 'mosaic');
+            gl.uniform1f(uniforms.u_fx_pixelate, (effects.includes('pixel-noise') || pixelateVal > 0) ? (pixelateVal || 1.0) : 0.0);
             
-            gl.uniform1f(uniforms.u_fx_rgb_split, getFx('rgbSplit', 'fx_rgbSplit'));
-            gl.uniform1f(uniforms.u_fx_chromatic, (effects.includes('chromatic-shift') || getFx('chromaticAberration', 'fx_chromaticAberration') > 0) ? getFx('chromaticAberration', 'fx_chromaticAberration') : 0.0);
-            gl.uniform1f(uniforms.u_fx_thermal, (effects.includes('thermal') || getFx('thermal', 'fx_thermal' as any) > 0) ? getFx('thermal', 'fx_thermal' as any) : 0.0); 
+            gl.uniform1f(uniforms.u_fx_rgb_split, getFx('rgbSplit', 'rgbSplit'));
+            
+            const chromVal = getFx('chromaticAberration', 'chromaticAberration');
+            gl.uniform1f(uniforms.u_fx_chromatic, (effects.includes('chromatic-shift') || chromVal > 0) ? (chromVal || 1.0) : 0.0);
+            
+            const thermalVal = getFx('effects' as any, 'thermal' as any); // Type hacking due to thermal not in base effects boolean list yet
+            gl.uniform1f(uniforms.u_fx_thermal, (effects.includes('thermal') || thermalVal > 0) ? (thermalVal || 1.0) : 0.0); 
+            
             gl.uniform1f(uniforms.u_fx_liquid, effects.includes('liquid-warp') ? 1.0 : 0.0);
-            gl.uniform1f(uniforms.u_fx_mirror, (effects.includes('mirror-x') || getFx('mirror', 'fx_mirror') > 0) ? getFx('mirror', 'fx_mirror') : 0.0);
-            gl.uniform1f(uniforms.u_fx_scanlines, (effects.includes('scan-drift') || getFx('scanlines', 'fx_scanlines') > 0) ? getFx('scanlines', 'fx_scanlines') : 0.0);
             
-            gl.uniform1f(uniforms.u_fx_film_grain, getFx('filmGrain', 'fx_filmGrain'));
-            gl.uniform1f(uniforms.u_fx_vignette, getFx('vignette', 'fx_vignette'));
-            gl.uniform1f(uniforms.u_fx_barrel, getFx('barrelDistortion', 'fx_barrelDistortion'));
-            gl.uniform1f(uniforms.u_fx_old_movie, getFx('oldMovie', 'fx_oldMovie'));
+            const mirrorVal = getFx('mirror', 'mirror');
+            gl.uniform1f(uniforms.u_fx_mirror, (effects.includes('mirror-x') || mirrorVal > 0) ? (mirrorVal || 1.0) : 0.0);
             
-            gl.uniform1f(uniforms.u_fx_kaleidoscope, getFx('kaleidoscope', 'fx_kaleidoscope'));
-            gl.uniform1f(uniforms.u_fx_halftone, getFx('halftone', 'fx_halftone'));
-            gl.uniform1f(uniforms.u_fx_grayscale, getFx('grayscale', 'fx_grayscale'));
-            gl.uniform1f(uniforms.u_fx_invert_beat, getFx('invert', 'fx_invert'));
-            gl.uniform1f(uniforms.u_fx_sepia, getFx('sepia', 'fx_sepia'));
+            const scanVal = getFx('scanlines', 'scanlines');
+            gl.uniform1f(uniforms.u_fx_scanlines, (effects.includes('scan-drift') || scanVal > 0) ? (scanVal || 1.0) : 0.0);
+            
+            gl.uniform1f(uniforms.u_fx_film_grain, getFx('filmGrain', 'filmGrain'));
+            gl.uniform1f(uniforms.u_fx_vignette, getFx('vignette', 'vignette'));
+            gl.uniform1f(uniforms.u_fx_barrel, getFx('barrelDistortion', 'barrelDistortion'));
+            gl.uniform1f(uniforms.u_fx_old_movie, getFx('oldMovie', 'oldMovie'));
+            
+            gl.uniform1f(uniforms.u_fx_kaleidoscope, getFx('kaleidoscope', 'kaleidoscope'));
+            gl.uniform1f(uniforms.u_fx_halftone, getFx('halftone', 'halftone'));
+            gl.uniform1f(uniforms.u_fx_grayscale, getFx('grayscale', 'grayscale'));
+            gl.uniform1f(uniforms.u_fx_invert_beat, getFx('invert', 'invert'));
+            gl.uniform1f(uniforms.u_fx_sepia, getFx('sepia', 'sepia'));
             
             // Custom Shader FX Toggles
             customEffects.forEach(fx => {
@@ -937,20 +1006,16 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                     // @ts-ignore
                     const loc = uniforms[uName];
                     if (loc) {
-                        const active = getCustomFxActive(fx);
-                        gl.uniform1f(loc, active ? 1.0 : 0.0);
+                        const intensity = getCustomFxIntensity(fx);
+                        gl.uniform1f(loc, intensity);
                     }
                 }
             });
             
             gl.drawArrays(gl.TRIANGLES, 0, 6);
-            
-            // Draw WebGL Canvas onto Main 2D Canvas
-            // Note: Since we applied camera in shader, we draw this 1:1.
             ctx.drawImage(glCanvasRef.current!, 0, 0);
         }
         
-        // Darken overlay
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.fillRect(0,0,CANVAS_WIDTH, CANVAS_HEIGHT);
     }
@@ -958,7 +1023,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // ===========================
     // LAYER 2 & 3: CANVAS 2D CAMERA TRANSFORM
     // ===========================
-    // Apply the same camera transforms to the 2D context for Particles and Text
     ctx.save();
     
     // 1. Center
@@ -971,19 +1035,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.translate(-camX, -camY);
 
     // --- CUSTOM JS CAMERA EFFECTS ---
-    // Injected here to affect the canvas transform context before drawing text/particles
     if (customEffects && customEffects.length > 0) {
         customEffects.forEach(fx => {
             if (fx.type === 'camera') {
-                const isActive = getCustomFxActive(fx);
-                if (isActive) {
+                const intensity = getCustomFxIntensity(fx);
+                if (intensity > 0) {
                     try {
-                        // Safe-ish eval: create a function with specific parameters
-                        // params: ctx, time, width, height, bass, mid, high
-                        const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', fx.code);
-                        cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high);
+                        // Injected: 'intensity' param so JS can scale effect
+                        const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', 'intensity', fx.code);
+                        cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high, intensity);
                     } catch (e) {
-                        // Silently fail or console log once? Better not to spam console in render loop
+                        // ignore
                     }
                 }
             }
@@ -994,11 +1056,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     ctx.translate(-CANVAS_WIDTH / 2, -CANVAS_HEIGHT / 2);
 
     // --- PARTICLES ---
-    const particlesEnabled = activeBlock?.overrides.part_enabled ?? config.particles.enabled;
+    let particlesEnabled = config.particles.enabled;
+    // Check override for particles (if any active block forces it on or off)
+    for (const block of activeBlocks) {
+        if (block.overrides.part_enabled === true) particlesEnabled = true;
+        else if (block.overrides.part_enabled === false) particlesEnabled = false;
+    }
 
     if (particlesEnabled && !isAlphaRender) {
          particlesRef.current.forEach(p => {
-             // Logic for movement (Same as before)
              const isTetris = config.particles.shape === 'tetris';
              if (isTetris) {
                  p.y += p.speed * (1 + bass * 0.5);
@@ -1032,9 +1098,8 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
          });
     }
 
-    // --- TEXT RENDERING (With Camera Applied) ---
+    // --- TEXT RENDERING ---
     if (config.showLyrics !== false) {
-        // ... Text Rendering Logic (Identical to previous for feature parity) ...
         const visibleSegments = data.segments.filter(s => time >= s.start - 2.0 && time <= s.end + 2.0);
         
         visibleSegments.forEach(seg => {

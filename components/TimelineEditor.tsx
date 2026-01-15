@@ -412,7 +412,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 <div className="flex flex-col items-center justify-center h-40 text-gray-500 border-2 border-dashed border-white/5 rounded-xl">
                     <AlertCircle className="mb-2 opacity-50" />
                     <span className="text-xs">Timeline Empty</span>
-                    <span className="text-[10px] mt-1">Add a Lyric Line or FX Event</span>
+                    <span className="text-xs text-gray-600 mt-1">Add a Lyric Line or FX Event</span>
                 </div>
             ) : (
                 combinedItems.map((item) => {
@@ -541,8 +541,14 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                           <button onClick={() => updateEventBlock(block.id, { collapsed: !block.collapsed })} className="p-1 hover:text-white text-gray-500">
                                               {block.collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                                           </button>
-                                          <button onClick={() => deleteEventBlock(block.id)} className="p-1 hover:text-red-400 text-gray-500">
-                                              <Trash2 size={14} />
+                                          
+                                          {/* DELETE BUTTON - Explicitly Visible */}
+                                          <button 
+                                            onClick={() => deleteEventBlock(block.id)} 
+                                            className="p-1.5 bg-red-950/20 hover:bg-red-900/50 rounded text-red-700 hover:text-red-400 border border-red-900/10 hover:border-red-900/50 ml-1"
+                                            title="Delete FX Block"
+                                          >
+                                              <Trash2 size={12} />
                                           </button>
                                      </div>
                                 </div>

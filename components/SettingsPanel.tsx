@@ -1,7 +1,7 @@
 
 
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play, Check, X } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS, TEMPLATE_SHADER_GLSL, TEMPLATE_CAMERA_JS, TEMPLATE_EVENT_PRESET } from '../constants';
 import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle, EventBlock, CustomEffect, CustomEffectType } from '../types';
 import { TimelineEditor } from './TimelineEditor';
@@ -177,15 +177,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // --- CUSTOM EFFECT HANDLERS ---
   const addNewEffect = (type: CustomEffectType) => {
+      // Logic replaced: No prompt. Direct creation of a draft object.
+      const count = customEffects.length + 1;
+      const defaultName = type === 'shader' ? `Custom Shader ${count}` : `Camera FX ${count}`;
+      
       const newFx: CustomEffect = {
           id: `fx-${Date.now()}`,
-          name: `New ${type === 'shader' ? 'Shader' : 'Camera'}`,
+          name: defaultName,
           type,
           code: type === 'shader' ? TEMPLATE_SHADER_GLSL : TEMPLATE_CAMERA_JS,
           active: false,
-          description: "My custom effect"
+          description: "New custom effect"
       };
-      if (onUpdateCustomEffects) onUpdateCustomEffects([...customEffects, newFx]);
+      
+      // We set editingEffect directly. We do NOT add to the list yet.
+      // The user must click "Save" to commit the new effect to the library.
       setEditingEffect(newFx);
   };
 
@@ -499,13 +505,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <div className="flex flex-col h-full">
                         <div className="flex items-center justify-between mb-2">
                             <input 
+                                autoFocus
                                 value={editingEffect.name}
                                 onChange={(e) => setEditingEffect({...editingEffect, name: e.target.value})}
                                 className="bg-transparent text-sm font-bold border-b border-transparent focus:border-cyan-500 outline-none w-1/2"
                                 placeholder="Effect Name"
                             />
                             <div className="flex gap-2">
-                                <button onClick={() => setEditingEffect(null)} className="text-xs text-gray-400 hover:text-white">Cancel</button>
+                                <button onClick={() => setEditingEffect(null)} className="text-xs text-gray-400 hover:text-white bg-neutral-700 px-2 py-1 rounded">Cancel</button>
                                 <button onClick={() => saveEffect(editingEffect)} className="text-xs bg-cyan-600 px-3 py-1 rounded text-white font-bold">Save</button>
                             </div>
                         </div>
