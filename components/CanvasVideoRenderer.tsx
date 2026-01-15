@@ -478,27 +478,29 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
       };
 
       // --- DYNAMIC SHADER CONSTRUCTION ---
-      // 1. Identify active custom shaders
-      const activeShaders = customEffects.filter(fx => fx.type === 'shader' && fx.active);
+      // 1. Identify ALL custom shaders (so we can toggle them via uniforms)
+      const shaderEffects = customEffects.filter(fx => fx.type === 'shader');
       
       // 2. Build injection strings
       let customFunctions = '';
       let customCalls = '';
+      let customUniforms = '';
       
-      activeShaders.forEach((fx, index) => {
-          // We rename the user's `effect_main` to something unique to avoid collision
-          // We assume user code uses `effect_main` as entry point.
-          // Simple string replace for now.
+      shaderEffects.forEach((fx, index) => {
           const uniqueName = `custom_fx_${index}_${fx.id.replace(/-/g, '_')}`;
+          const uniformName = `u_fx_${fx.id.replace(/-/g, '_')}`; // Safe uniform name
+          
+          // Rename function body
           const modifiedCode = fx.code.replace(/effect_main/g, uniqueName);
           
+          customUniforms += `uniform float ${uniformName};\n`;
           customFunctions += `\n// Custom FX: ${fx.name}\n${modifiedCode}\n`;
-          customCalls += `\n    color = ${uniqueName}(color, uv);\n`;
+          customCalls += `\n    if (${uniformName} > 0.5) color = ${uniqueName}(color, uv);\n`;
       });
 
       // 3. Assemble Fragment Shader
       const finalFragmentShader = FRAGMENT_SHADER_BASE
-          .replace('// CUSTOM_FUNCTIONS_HERE', customFunctions)
+          .replace('// CUSTOM_FUNCTIONS_HERE', customUniforms + customFunctions)
           .replace('// CUSTOM_CALLS_HERE', customCalls);
 
       const vs = createShader(gl.VERTEX_SHADER, VERTEX_SHADER);
@@ -534,7 +536,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
            1.0,  1.0
       ]), gl.STATIC_DRAW);
 
-      glUniformsRef.current = {
+      const baseUniforms = {
           u_time: gl.getUniformLocation(program, 'u_time'),
           u_resolution: gl.getUniformLocation(program, 'u_resolution'),
           u_use_texture: gl.getUniformLocation(program, 'u_use_texture'),
@@ -577,6 +579,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
           u_fx_invert_beat: gl.getUniformLocation(program, 'u_fx_invert_beat'),
           u_fx_sepia: gl.getUniformLocation(program, 'u_fx_sepia'),
       };
+      
+      // Store dynamic uniforms for custom FX
+      shaderEffects.forEach((fx) => {
+          const uName = `u_fx_${fx.id.replace(/-/g, '_')}`;
+          // @ts-ignore
+          baseUniforms[uName] = gl.getUniformLocation(program, uName);
+      });
+      
+      glUniformsRef.current = baseUniforms;
 
       const positionLocation = gl.getAttribLocation(program, "position");
       gl.enableVertexAttribArray(positionLocation);
@@ -730,6 +741,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
              if (override !== undefined) return override; 
         }
         return val;
+    };
+    
+    // Helper for Custom Effects Override (Global vs EventBlock)
+    const getCustomFxActive = (fx: CustomEffect) => {
+        if (activeBlock && activeBlock.overrides && activeBlock.overrides.custom_fx) {
+             const override = activeBlock.overrides.custom_fx[fx.id];
+             if (override !== undefined) return override;
+        }
+        return fx.active;
     };
 
     let effectiveColorsActive = config.colors.active;
@@ -910,6 +930,19 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             gl.uniform1f(uniforms.u_fx_invert_beat, getFx('invert', 'fx_invert'));
             gl.uniform1f(uniforms.u_fx_sepia, getFx('sepia', 'fx_sepia'));
             
+            // Custom Shader FX Toggles
+            customEffects.forEach(fx => {
+                if (fx.type === 'shader') {
+                    const uName = `u_fx_${fx.id.replace(/-/g, '_')}`;
+                    // @ts-ignore
+                    const loc = uniforms[uName];
+                    if (loc) {
+                        const active = getCustomFxActive(fx);
+                        gl.uniform1f(loc, active ? 1.0 : 0.0);
+                    }
+                }
+            });
+            
             gl.drawArrays(gl.TRIANGLES, 0, 6);
             
             // Draw WebGL Canvas onto Main 2D Canvas
@@ -941,14 +974,17 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
     // Injected here to affect the canvas transform context before drawing text/particles
     if (customEffects && customEffects.length > 0) {
         customEffects.forEach(fx => {
-            if (fx.type === 'camera' && fx.active) {
-                try {
-                    // Safe-ish eval: create a function with specific parameters
-                    // params: ctx, time, width, height, bass, mid, high
-                    const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', fx.code);
-                    cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high);
-                } catch (e) {
-                    // Silently fail or console log once? Better not to spam console in render loop
+            if (fx.type === 'camera') {
+                const isActive = getCustomFxActive(fx);
+                if (isActive) {
+                    try {
+                        // Safe-ish eval: create a function with specific parameters
+                        // params: ctx, time, width, height, bass, mid, high
+                        const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', fx.code);
+                        cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high);
+                    } catch (e) {
+                        // Silently fail or console log once? Better not to spam console in render loop
+                    }
                 }
             }
         });

@@ -1,6 +1,7 @@
 
+
 import React, { useEffect, useRef, useState } from 'react';
-import { LyricData, Segment, Word, EventBlock, EffectOverrides } from '../types';
+import { LyricData, Segment, Word, EventBlock, EffectOverrides, CustomEffect } from '../types';
 import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface TimelineEditorProps {
@@ -10,6 +11,7 @@ interface TimelineEditorProps {
   onSeek: (time: number) => void;
   eventBlocks: EventBlock[];
   onUpdateEventBlocks: (blocks: EventBlock[]) => void;
+  customEffects?: CustomEffect[]; // Added customEffects prop
 }
 
 // --- HELPER FUNCTIONS ---
@@ -150,7 +152,7 @@ const DebouncedTextArea = ({
     );
 };
 
-const EffectToggle = ({ label, isActive, onToggle }: { label: string, isActive: boolean | undefined, onToggle: () => void }) => {
+const EffectToggle: React.FC<{ label: string, isActive: boolean | undefined, onToggle: () => void }> = ({ label, isActive, onToggle }) => {
     return (
         <button
             onClick={onToggle}
@@ -175,7 +177,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     currentTime, 
     onSeek,
     eventBlocks,
-    onUpdateEventBlocks
+    onUpdateEventBlocks,
+    customEffects = []
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
@@ -287,6 +290,33 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       // Remove key if undefined to clean up
       if (next === undefined) delete newOverrides[key];
 
+      updateEventBlock(blockId, { overrides: newOverrides });
+  };
+
+  const toggleCustomOverride = (blockId: string, effectId: string) => {
+      const block = eventBlocks.find(b => b.id === blockId);
+      if(!block) return;
+
+      const currentMap = block.overrides.custom_fx || {};
+      const current = currentMap[effectId];
+
+      // Cycle: undefined -> true -> false -> undefined
+      let next: boolean | undefined;
+      if (current === undefined) next = true;
+      else if (current === true) next = false;
+      else next = undefined;
+
+      const newMap = { ...currentMap, [effectId]: next };
+      if (next === undefined) delete newMap[effectId];
+
+      const newOverrides = { ...block.overrides };
+      if (Object.keys(newMap).length === 0) {
+          delete newOverrides.custom_fx;
+      } else {
+          // @ts-ignore - TS sometimes struggles with dynamic Record types in strict mode
+          newOverrides.custom_fx = newMap;
+      }
+      
       updateEventBlock(blockId, { overrides: newOverrides });
   };
   
@@ -518,13 +548,21 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                 </div>
 
                                 {/* ACTIVE OVERRIDES INDICATOR (Collapsed Mode) */}
-                                {block.collapsed && Object.keys(block.overrides).length > 0 && (
+                                {block.collapsed && (
                                     <div className="flex flex-wrap gap-1 pl-2">
-                                        {Object.entries(block.overrides).map(([k, v]) => (
-                                            <span key={k} className="text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/20">
-                                                {k.replace('fx_', '').replace('cam_', '')}
+                                        {Object.entries(block.overrides).map(([k, v]) => {
+                                            if (k === 'custom_fx') return null; // Handle separately or ignore in summary
+                                            return (
+                                                <span key={k} className="text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/20">
+                                                    {k.replace('fx_', '').replace('cam_', '')}
+                                                </span>
+                                            )
+                                        })}
+                                        {block.overrides.custom_fx && Object.keys(block.overrides.custom_fx).length > 0 && (
+                                            <span className="text-[9px] bg-cyan-900/50 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-500/20">
+                                                +{Object.keys(block.overrides.custom_fx).length} Custom
                                             </span>
-                                        ))}
+                                        )}
                                     </div>
                                 )}
 
@@ -561,6 +599,23 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                              <h4 className="text-[9px] font-bold text-gray-500 uppercase mb-2 mt-3">Particles</h4>
                                              <EffectToggle label="Particles" isActive={block.overrides.part_enabled} onToggle={() => toggleOverride(block.id, 'part_enabled')} />
                                          </div>
+
+                                         {/* Custom Effects */}
+                                         {customEffects && customEffects.length > 0 && (
+                                             <div className="col-span-2 pt-3 mt-3 border-t border-white/5">
+                                                 <h4 className="text-[9px] font-bold text-cyan-500 uppercase mb-2">Custom Effects</h4>
+                                                 <div className="flex flex-wrap gap-2">
+                                                     {customEffects.map(fx => (
+                                                         <EffectToggle 
+                                                            key={fx.id} 
+                                                            label={fx.name} 
+                                                            isActive={block.overrides.custom_fx?.[fx.id]} 
+                                                            onToggle={() => toggleCustomOverride(block.id, fx.id)} 
+                                                         />
+                                                     ))}
+                                                 </div>
+                                             </div>
+                                         )}
                                     </div>
                                 )}
                             </div>

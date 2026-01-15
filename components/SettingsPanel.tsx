@@ -1,3 +1,5 @@
+
+
 import React, { useState, useRef } from 'react';
 import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS, TEMPLATE_SHADER_GLSL, TEMPLATE_CAMERA_JS, TEMPLATE_EVENT_PRESET } from '../constants';
@@ -408,6 +410,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onSeek={onSeek}
                 eventBlocks={eventBlocks}
                 onUpdateEventBlocks={onUpdateEventBlocks}
+                customEffects={customEffects}
             />
         )}
 
