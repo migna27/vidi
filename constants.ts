@@ -38,41 +38,75 @@ export const DEFAULT_LYRICS: LyricData = {
 
 // --- CUSTOM FX TEMPLATES ---
 
-export const TEMPLATE_SHADER_GLSL = `// Custom Shader Effect
+export const TEMPLATE_SHADER_GLSL = `// --- GLSL FRAGMENT SHADER ---
+// Scope: Affects BACKGROUND ONLY (behind text).
+// Input: 'color' (original pixel), 'uv' (coordinates 0.0 to 1.0)
+// Output: return the modified vec3 color.
+
 // Available Uniforms:
-// float u_time;       // Current time in seconds
-// vec2 u_resolution;  // Canvas dimensions (width, height)
-// float u_bass;       // Bass intensity (0.0 to 1.0)
-// float u_mid;        // Mid intensity (0.0 to 1.0)
-// float u_high;       // High intensity (0.0 to 1.0)
+// float u_time;       // Time in seconds
+// vec2 u_resolution;  // Canvas size (w, h)
+// float u_bass;       // 0.0 to 1.0 (Low Freq)
+// float u_mid;        // 0.0 to 1.0 (Mid Freq)
+// float u_high;       // 0.0 to 1.0 (High Freq)
+// float u_intensity;  // 0.0 to 1.0 (Effect Strength)
 
 vec3 effect_main(vec3 color, vec2 uv) {
-    // Example: Red Tint pulsating with Bass
-    float pulse = 0.5 + 0.5 * sin(u_time * 5.0);
-    vec3 tint = vec3(1.0, 0.2, 0.2) * (u_bass * 2.0 + 0.5);
+    // 1. REACTIVE PULSE
+    // Create a wave that moves with time and scales with Bass
+    float wave = sin(uv.y * 10.0 + u_time * 5.0);
     
-    // Mix original color with tint
-    return mix(color, color * tint, 0.5);
+    // 2. COLOR SHIFT
+    // If bass is high (> 0.5), shift towards Red/Pink
+    vec3 shiftColor = vec3(1.0, 0.0, 0.5);
+    float mixAmount = u_bass * 0.8 * u_intensity; // Scale by intensity slider
+    
+    // 3. DISTORTION
+    // Warp the color sampling based on wave
+    // Note: To warp properly, you usually modify 'uv' before sampling,
+    // but here we are modifying the pixel color directly.
+    color += wave * 0.1 * u_high; 
+
+    // Mix original color with our shift
+    return mix(color, shiftColor, mixAmount);
 }`;
 
-export const TEMPLATE_CAMERA_JS = `// Custom Camera Script (JavaScript)
-// Available Variables:
-// ctx: CanvasRenderingContext2D
-// time: number (seconds)
-// width: number (canvas width)
-// height: number (canvas height)
-// bass: number (0-1)
-// mid: number (0-1)
-// high: number (0-1)
+export const TEMPLATE_CAMERA_JS = `// --- JS CAMERA SCRIPT ---
+// Scope: Affects EVERYTHING (Background + Lyrics + Particles).
+// Runs every frame.
 
-// Example: Spiral Rotation on Bass
-if (bass > 0.5) {
-   const angle = Math.sin(time * 2) * 0.1 * bass;
-   ctx.rotate(angle);
-   
-   // Slight zoom
-   const zoom = 1 + (bass * 0.05);
-   ctx.scale(zoom, zoom);
+// Available Variables:
+// ctx       : CanvasRenderingContext2D (The drawing pen)
+// time      : number (Current time in seconds)
+// width     : number (Canvas width)
+// height    : number (Canvas height)
+// bass      : number (0.0 to 1.0)
+// mid       : number (0.0 to 1.0)
+// high      : number (0.0 to 1.0)
+// intensity : number (0.0 to 1.0, Effect Strength)
+
+// --- EXAMPLE: KICK DRUM ROTATION ---
+
+// 1. Detect Beat (Bass > 0.6)
+if (bass > 0.6) {
+    // 2. Calculate Rotation Angle
+    // Swing back and forth based on time, scaled by bass & intensity
+    const angle = Math.sin(time * 15) * 0.1 * bass * intensity;
+    
+    // 3. Apply Rotation
+    ctx.rotate(angle);
+    
+    // 4. Add a "Zoom Pump"
+    const zoom = 1 + (0.1 * bass * intensity);
+    ctx.scale(zoom, zoom);
+}
+
+// 5. High Freq Jitter (Snare/Hi-Hats)
+if (high > 0.5) {
+    const jitter = 10 * high * intensity;
+    const x = (Math.random() - 0.5) * jitter;
+    const y = (Math.random() - 0.5) * jitter;
+    ctx.translate(x, y);
 }`;
 
 export const TEMPLATE_EVENT_PRESET = `{

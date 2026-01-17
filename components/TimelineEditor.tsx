@@ -1,8 +1,8 @@
 
 
 import React, { useEffect, useRef, useState } from 'react';
-import { LyricData, Segment, Word, EventBlock, EffectOverrides, CustomEffect } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown } from 'lucide-react';
+import { LyricData, Segment, Word, EventBlock, EffectOverrides, CustomEffect, RendererConfig } from '../types';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown, Palette, Type, MousePointer2 } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
@@ -11,7 +11,9 @@ interface TimelineEditorProps {
   onSeek: (time: number) => void;
   eventBlocks: EventBlock[];
   onUpdateEventBlocks: (blocks: EventBlock[]) => void;
-  customEffects?: CustomEffect[]; // Added customEffects prop
+  customEffects?: CustomEffect[]; 
+  projectConfig?: RendererConfig; // Need access to project colors for the palette
+  duration?: number;
 }
 
 // --- HELPER FUNCTIONS ---
@@ -169,6 +171,66 @@ const EffectToggle: React.FC<{ label: string, isActive: boolean | undefined, onT
     );
 };
 
+// New Component: Visual Timeline Track
+const VisualTimelineTrack: React.FC<{ 
+    duration: number, 
+    items: Array<{type: string, data: any}>, 
+    currentTime: number, 
+    onSeek: (t: number) => void 
+}> = ({ duration, items, currentTime, onSeek }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const maxDur = Math.max(duration, 10); // Minimum 10s timeline
+
+    const handleClick = (e: React.MouseEvent) => {
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percent = Math.max(0, Math.min(1, x / rect.width));
+        onSeek(percent * maxDur);
+    };
+
+    return (
+        <div className="w-full bg-neutral-900 h-16 border-b border-white/5 relative select-none overflow-hidden group cursor-crosshair" onClick={handleClick} ref={containerRef}>
+            {/* Grid Lines */}
+            <div className="absolute inset-0 flex" style={{ opacity: 0.1 }}>
+                {Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} className="flex-1 border-r border-white"></div>
+                ))}
+            </div>
+
+            {/* Blocks */}
+            {items.map((item, i) => {
+                const { start, end } = item.data;
+                const left = (start / maxDur) * 100;
+                const width = Math.max(0.2, ((end - start) / maxDur) * 100);
+                const isLyric = item.type === 'segment';
+                
+                return (
+                    <div 
+                        key={i}
+                        className={`absolute top-0 bottom-0 border-r border-black/20 ${isLyric ? 'bg-cyan-500/20 hover:bg-cyan-500/40 border-t-2 border-t-cyan-500/50' : 'bg-purple-500/20 hover:bg-purple-500/40 border-b-2 border-b-purple-500/50 h-3/4 top-auto'}`}
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                        title={isLyric ? item.data.text : item.data.label}
+                    />
+                );
+            })}
+
+            {/* Playhead */}
+            <div 
+                className="absolute top-0 bottom-0 w-0.5 bg-red-500 shadow-[0_0_10px_red] z-10 pointer-events-none transition-all duration-75 ease-linear"
+                style={{ left: `${(currentTime / maxDur) * 100}%` }}
+            >
+                <div className="absolute -top-1 -left-1.5 w-4 h-4 bg-red-500 rotate-45 transform -translate-y-1/2" />
+            </div>
+            
+            {/* Time Indicator */}
+            <div className="absolute bottom-1 right-2 text-[9px] font-mono text-gray-500 bg-black/50 px-1 rounded">
+                {secondsToMMSS(maxDur)}
+            </div>
+        </div>
+    );
+};
+
 // --- MAIN COMPONENT ---
 
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({ 
@@ -178,17 +240,15 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     onSeek,
     eventBlocks,
     onUpdateEventBlocks,
-    customEffects = []
+    customEffects = [],
+    projectConfig,
+    duration = 60
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [activeTabMap, setActiveTabMap] = useState<Record<string, 'text' | 'style'>>({});
 
-  const toggleExpand = (id: string) => {
-    const newSet = new Set(expandedSegments);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setExpandedSegments(newSet);
+  const setTab = (id: string, tab: 'text' | 'style') => {
+      setActiveTabMap(prev => ({...prev, [id]: tab}));
   };
 
   // --- DATA UPDATERS ---
@@ -219,14 +279,20 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     onUpdate({ ...data, segments: newSegments });
   };
 
-  const updateWordData = (segIndex: number, wordIndex: number, updates: Partial<Word>) => {
-    const newSegments = [...data.segments];
-    const segment = { ...newSegments[segIndex] };
-    const newWords = [...segment.words];
-    newWords[wordIndex] = { ...newWords[wordIndex], ...updates };
-    segment.words = newWords;
-    newSegments[segIndex] = segment;
-    onUpdate({ ...data, segments: newSegments });
+  const updateSegmentStyle = (index: number, styleUpdates: Partial<Segment['style']>) => {
+      const newSegments = [...data.segments];
+      const segment = newSegments[index];
+      const currentStyle = segment.style || {};
+      
+      // Clean up undefined/empty values
+      const newStyle = { ...currentStyle, ...styleUpdates };
+      Object.keys(newStyle).forEach(key => {
+          // @ts-ignore
+          if (newStyle[key] === undefined || newStyle[key] === '') delete newStyle[key];
+      });
+
+      newSegments[index] = { ...segment, style: newStyle };
+      onUpdate({ ...data, segments: newSegments });
   };
 
   const handleDeleteSegment = (index: number) => {
@@ -300,7 +366,6 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       const currentMap = block.overrides.custom_fx || {};
       const current = currentMap[effectId];
 
-      // Cycle: undefined -> true -> false -> undefined
       let next: boolean | undefined;
       if (current === undefined) next = true;
       else if (current === true) next = false;
@@ -313,7 +378,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       if (Object.keys(newMap).length === 0) {
           delete newOverrides.custom_fx;
       } else {
-          // @ts-ignore - TS sometimes struggles with dynamic Record types in strict mode
+          // @ts-ignore 
           newOverrides.custom_fx = newMap;
       }
       
@@ -354,9 +419,8 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
   let currentSection = 'verse'; 
 
-  // Auto-scroll
+  // Auto-scroll logic
   useEffect(() => {
-    // Find active element
     const activeItem = combinedItems.find(item => {
         if(item.type === 'segment') return currentTime >= item.data.start && currentTime <= item.data.end;
         if(item.type === 'block') return currentTime >= item.data.start && currentTime <= item.data.end;
@@ -367,7 +431,6 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         const id = activeItem.type === 'segment' ? activeItem.data.id : activeItem.data.id;
         const row = scrollRef.current.querySelector(`[data-id="${id}"]`) as HTMLElement;
         if (row) {
-             // Basic check to see if visible, if not scroll
             const container = scrollRef.current;
             const rowTop = row.offsetTop;
             const rowBottom = rowTop + row.offsetHeight;
@@ -383,11 +446,19 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
         
+        {/* VISUAL TRACK */}
+        <VisualTimelineTrack 
+            duration={duration} 
+            items={combinedItems} 
+            currentTime={currentTime} 
+            onSeek={onSeek} 
+        />
+
         {/* HEADER TOOLBAR */}
         <div className="p-3 border-b border-white/5 flex justify-between items-center bg-neutral-800 shrink-0">
             <div className="flex items-center gap-2">
                 <Clock size={16} className="text-cyan-400" /> 
-                <span className="text-xs font-bold text-gray-200 uppercase tracking-widest">Timeline</span>
+                <span className="text-xs font-bold text-gray-200 uppercase tracking-widest">Detail View</span>
             </div>
             
             <div className="flex gap-2">
@@ -395,19 +466,19 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     onClick={handleAddEventBlock}
                     className="text-[10px] flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/80 border border-purple-500/50 px-3 py-1.5 rounded text-purple-200 transition-colors font-bold"
                 >
-                    <Zap size={12} /> Add Event
+                    <Zap size={12} /> Event
                 </button>
                 <button 
                     onClick={handleAddSegment}
                     className="text-[10px] flex items-center gap-1 bg-cyan-900/50 hover:bg-cyan-800/80 border border-cyan-500/50 px-3 py-1.5 rounded text-cyan-200 transition-colors font-bold"
                 >
-                    <Plus size={12} /> Add Line
+                    <Plus size={12} /> Line
                 </button>
             </div>
         </div>
 
         {/* LIST AREA */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2" ref={scrollRef}>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3" ref={scrollRef}>
             {combinedItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 text-gray-500 border-2 border-dashed border-white/5 rounded-xl">
                     <AlertCircle className="mb-2 opacity-50" />
@@ -421,8 +492,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                         const seg = item.data;
                         const idx = item.index;
                         const isActive = currentTime >= seg.start && currentTime <= seg.end;
-                        const isExpanded = expandedSegments.has(seg.id);
-                        const isEditingSection = editingSectionId === seg.id;
+                        const currentTab = activeTabMap[seg.id] || 'text';
                         
                         // Handle Section Headers
                         const isNewSection = !!seg.section;
@@ -432,7 +502,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                         return (
                              <div key={seg.id} className="flex flex-col gap-1">
                                 {isNewSection && (
-                                    <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 mb-1 ${getSectionBg(currentSection)} border border-white/5 shadow-sm`}>
+                                    <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 ${getSectionBg(currentSection)} border border-white/5 shadow-sm sticky top-0 z-10`}>
                                         <div className="flex items-center gap-2">
                                             <Tag size={12} className="opacity-70" />
                                             <span className="text-[10px] font-bold uppercase tracking-widest">{currentSection}</span>
@@ -441,49 +511,123 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                 )}
                                 <div 
                                     data-id={seg.id}
-                                    className={`group relative flex flex-col gap-2 p-3 rounded-r-lg border-t border-b border-r border-white/5 transition-all duration-200 border-l-4 ${getSectionColor(currentSection)} ${
-                                        isActive ? 'bg-cyan-950/30 border-t-cyan-500/30 border-b-cyan-500/30' : 'bg-neutral-800 hover:border-r-white/20'
+                                    className={`group relative flex flex-col rounded-lg border border-white/5 transition-all duration-200 overflow-hidden ${
+                                        isActive ? 'bg-cyan-950/20 border-cyan-500/30' : 'bg-neutral-800/80 hover:border-white/20'
                                     }`}
                                 >
-                                    {isActive && <div className="absolute inset-0 border-2 border-cyan-500/20 rounded-r-lg pointer-events-none" />}
-                                    
-                                    {/* CONTROLS */}
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-2 bg-neutral-950/50 p-1 rounded-md border border-white/5">
-                                             <div className="flex flex-col px-1">
-                                                <label className="text-[8px] text-cyan-500 font-bold uppercase">Start</label>
-                                                <TimeInput className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white" value={seg.start} onChange={(val) => updateSegmentData(idx, { start: val })} />
-                                            </div>
-                                            <div className="w-px h-6 bg-white/10"></div>
-                                            <div className="flex flex-col px-1">
-                                                <label className="text-[8px] text-purple-500 font-bold uppercase">End</label>
-                                                <TimeInput className="bg-transparent w-16 text-xs font-mono text-gray-200 outline-none focus:text-white" value={seg.end} onChange={(val) => updateSegmentData(idx, { end: val })} />
-                                            </div>
+                                    {/* Vertical Color Indicator */}
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${getSectionColor(currentSection).replace('border-','bg-')}`}></div>
+
+                                    {/* Card Toolbar */}
+                                    <div className="flex items-center justify-between p-2 pl-3 bg-black/20 border-b border-white/5">
+                                        {/* Tabs */}
+                                        <div className="flex gap-1 bg-black/40 p-0.5 rounded-md">
+                                            <button 
+                                                onClick={() => setTab(seg.id, 'text')}
+                                                className={`p-1 rounded text-[10px] flex items-center gap-1 ${currentTab === 'text' ? 'bg-neutral-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                            >
+                                                <Type size={12} /> Text
+                                            </button>
+                                            <button 
+                                                onClick={() => setTab(seg.id, 'style')}
+                                                className={`p-1 rounded text-[10px] flex items-center gap-1 ${currentTab === 'style' ? 'bg-neutral-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                            >
+                                                <Palette size={12} /> Style
+                                            </button>
                                         </div>
+
+                                        {/* Actions */}
                                         <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                              {!isNewSection && (
-                                                <button onClick={() => updateSegmentData(idx, { section: 'new section' })} className="p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white" title="New Section">
+                                                <button onClick={() => updateSegmentData(idx, { section: 'new section' })} className="p-1 rounded-md hover:bg-white/10 text-gray-400 hover:text-white" title="Start New Section">
                                                     <FolderInput size={14} />
                                                 </button>
                                              )}
-                                             <button onClick={() => onSeek(seg.start)} className={`p-1.5 rounded-md transition-colors ${isActive ? 'bg-cyan-500 text-black' : 'hover:bg-white/10 text-gray-400'}`}>
+                                             <button onClick={() => onSeek(seg.start)} className={`p-1 rounded-md transition-colors ${isActive ? 'text-cyan-400' : 'hover:bg-white/10 text-gray-400'}`}>
                                                  <PlayCircle size={14} fill={isActive ? "currentColor" : "none"} />
                                              </button>
-                                             <button onClick={() => handleDeleteSegment(idx)} className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400">
+                                             <button onClick={() => handleDeleteSegment(idx)} className="p-1 rounded-md hover:bg-red-500/20 text-gray-500 hover:text-red-400">
                                                  <Trash2 size={14} />
                                              </button>
                                         </div>
                                     </div>
                                     
-                                    {/* TEXT */}
-                                    <DebouncedTextArea
-                                        className={`w-full bg-neutral-900/50 rounded-md p-2 text-sm outline-none resize-none font-medium leading-relaxed border transition-colors focus:ring-1 focus:ring-cyan-500/50 ${isActive ? 'text-white border-white/10' : 'text-gray-400 border-transparent focus:text-gray-200'}`}
-                                        rows={Math.max(1, seg.text.split('\n').length)}
-                                        value={seg.text}
-                                        onChange={(val) => updateSegmentData(idx, { text: val }, true)} 
-                                        onBlur={() => {}} 
-                                        placeholder="Enter lyrics here..."
-                                    />
+                                    {/* TAB CONTENT: TEXT */}
+                                    {currentTab === 'text' && (
+                                        <div className="p-3">
+                                            <div className="flex items-center justify-between gap-3 mb-2">
+                                                <div className="flex items-center gap-1">
+                                                    <TimeInput className="bg-neutral-900 border border-white/10 rounded px-1 w-14 text-[10px] font-mono text-gray-300 outline-none focus:border-cyan-500" value={seg.start} onChange={(val) => updateSegmentData(idx, { start: val })} />
+                                                    <span className="text-gray-600 text-[10px]">to</span>
+                                                    <TimeInput className="bg-neutral-900 border border-white/10 rounded px-1 w-14 text-[10px] font-mono text-gray-300 outline-none focus:border-cyan-500" value={seg.end} onChange={(val) => updateSegmentData(idx, { end: val })} />
+                                                </div>
+                                            </div>
+                                            <DebouncedTextArea
+                                                className={`w-full bg-transparent text-sm outline-none resize-none font-medium leading-relaxed transition-colors placeholder-gray-700 ${isActive ? 'text-white' : 'text-gray-300'}`}
+                                                rows={Math.max(1, seg.text.split('\n').length)}
+                                                value={seg.text}
+                                                onChange={(val) => updateSegmentData(idx, { text: val }, true)} 
+                                                onBlur={() => {}} 
+                                                placeholder="Enter lyrics..."
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* TAB CONTENT: STYLE */}
+                                    {currentTab === 'style' && (
+                                        <div className="p-3 bg-neutral-900/50">
+                                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] text-gray-500 uppercase font-bold">Text Color</label>
+                                                    <div className="flex gap-2 items-center">
+                                                        <input 
+                                                            type="color" 
+                                                            value={seg.style?.colorText || projectConfig?.colors.text || '#ffffff'} 
+                                                            onChange={(e) => updateSegmentStyle(idx, { colorText: e.target.value })}
+                                                            className="w-6 h-6 bg-transparent cursor-pointer rounded overflow-hidden"
+                                                        />
+                                                        {projectConfig && (
+                                                            <div className="flex gap-1">
+                                                                {[projectConfig.colors.text, projectConfig.colors.active, projectConfig.colors.secondary].map(c => (
+                                                                    <div key={c} onClick={() => updateSegmentStyle(idx, { colorText: c })} className="w-4 h-4 rounded-full cursor-pointer border border-white/10 hover:scale-110 transition-transform" style={{background: c}}></div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] text-gray-500 uppercase font-bold">Active Glow</label>
+                                                    <div className="flex gap-2 items-center">
+                                                        <input 
+                                                            type="color" 
+                                                            value={seg.style?.colorActive || projectConfig?.colors.active || '#00ffff'} 
+                                                            onChange={(e) => updateSegmentStyle(idx, { colorActive: e.target.value })}
+                                                            className="w-6 h-6 bg-transparent cursor-pointer rounded overflow-hidden"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between">
+                                                    <label className="text-[9px] text-gray-500 uppercase font-bold">Font Scale</label>
+                                                    <span className="text-[9px] text-gray-400">{seg.style?.scale || 1.0}x</span>
+                                                </div>
+                                                <input 
+                                                    type="range" min="0.5" max="3.0" step="0.1"
+                                                    value={seg.style?.scale || 1.0}
+                                                    onChange={(e) => updateSegmentStyle(idx, { scale: parseFloat(e.target.value) })}
+                                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                                                />
+                                            </div>
+                                            
+                                            <div className="mt-3 flex justify-end">
+                                                <button onClick={() => updateSegmentStyle(idx, { colorText: undefined, colorActive: undefined, scale: 1.0 })} className="text-[9px] text-red-400 hover:text-red-300">
+                                                    Reset Styles
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                              </div>
                         );
@@ -542,7 +686,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                               {block.collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
                                           </button>
                                           
-                                          {/* DELETE BUTTON - Explicitly Visible */}
+                                          {/* DELETE BUTTON */}
                                           <button 
                                             onClick={() => deleteEventBlock(block.id)} 
                                             className="p-1.5 bg-red-950/20 hover:bg-red-900/50 rounded text-red-700 hover:text-red-400 border border-red-900/10 hover:border-red-900/50 ml-1"

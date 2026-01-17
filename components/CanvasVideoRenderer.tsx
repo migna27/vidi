@@ -709,12 +709,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         blockFades.set(b.id, f);
     });
 
-    // Helper: Iterate through all active blocks. 
-    // If ANY block enables an effect (true), it turns ON with that block's fade.
-    // If ANY block explicitly disables (false), it turns OFF.
-    // Logic: Explicit Disable > Explicit Enable > Global.
-    // For intensity, we take the MAX intensity from any enabling block.
-    
     const getFx = (key: keyof typeof config.effects, overrideKey: keyof typeof config.effects) => { // overrideKey usually maps 1:1 in our types but using key for simplicity
         let isActive = config.effects[key];
         let maxIntensity = isActive ? 1.0 : 0.0;
@@ -727,8 +721,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             if (val !== undefined) {
                 overridden = true;
                 if (val === false) {
-                    // Explicit OFF overrides everything in this simplified model?
-                    // Or does strict stacking apply? Let's say explicit OFF kills it.
                     isActive = false;
                     maxIntensity = 0.0; 
                 } else if (val === true) {
@@ -740,23 +732,14 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 }
             }
         }
-        
-        // Return 0-1 intensity. If active but no blocks, intensity is 1 (or 0 if global off)
-        // If blocks define it, use the block fade.
         return isActive ? maxIntensity : 0.0;
     };
 
-    // Specific mapping needed because types key != overrides key sometimes (e.g. key=chromaticAberration, override=fx_chromaticAberration)
-    // Actually in types.ts: fx_chromaticAberration maps to config.effects.chromaticAberration
-    
-    // Helper for Camera
     const getCam = (key: keyof typeof config.camera, overrideKey: string) => {
         let isActive = config.camera[key];
-        let maxIntensity = 1.0; // Camera effects usually just boolean triggers, but we can fade their intensity via the block fade factor used later.
-        
-        let foundOverride = false;
-        let activeFromBlock = false;
         let maxFade = 0.0;
+        let activeFromBlock = false;
+        let foundOverride = false;
 
         for (const block of activeBlocks) {
             // @ts-ignore
@@ -766,25 +749,14 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 if (val === true) {
                     activeFromBlock = true;
                     maxFade = Math.max(maxFade, blockFades.get(block.id) || 1.0);
-                } else {
-                    // If one block sets it to false, does it kill others? 
-                    // Let's assume OR logic for camera triggers usually, unless strictly disabled.
-                    // But to keep it simple: Last block usually wins in "state", but for overlapping we merge.
-                    // Let's go with: If ANY block says TRUE, it's TRUE (weighted).
                 }
             }
         }
         
-        if (foundOverride) {
-            return activeFromBlock ? maxFade : 0.0;
-        }
-        // Fallback to global
-        // If global is ON, return 1.0 (no fade needed)
-        // If global OFF, return 0.0
+        if (foundOverride) return activeFromBlock ? maxFade : 0.0;
         return isActive ? 1.0 : 0.0;
     };
 
-    // Helper for Custom FX
     const getCustomFxIntensity = (fx: CustomEffect) => {
         let isActive = fx.active;
         let intensity = isActive ? 1.0 : 0.0;
@@ -968,7 +940,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
             
             gl.uniform1f(uniforms.u_fx_glitch, (effects.includes('red-error') || effects.includes('dark-error')) ? 1.0 : 0.0);
             
-            // Use getFx helper for dynamic/fadeable props
             const pixelateVal = getFx('mosaic', 'mosaic');
             gl.uniform1f(uniforms.u_fx_pixelate, (effects.includes('pixel-noise') || pixelateVal > 0) ? (pixelateVal || 1.0) : 0.0);
             
@@ -1041,7 +1012,6 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                 const intensity = getCustomFxIntensity(fx);
                 if (intensity > 0) {
                     try {
-                        // Injected: 'intensity' param so JS can scale effect
                         const cameraFunc = new Function('ctx', 'time', 'width', 'height', 'bass', 'mid', 'high', 'intensity', fx.code);
                         cameraFunc(ctx, time, CANVAS_WIDTH, CANVAS_HEIGHT, bass, mid, high, intensity);
                     } catch (e) {
@@ -1057,7 +1027,7 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
 
     // --- PARTICLES ---
     let particlesEnabled = config.particles.enabled;
-    // Check override for particles (if any active block forces it on or off)
+    // Check override for particles
     for (const block of activeBlocks) {
         if (block.overrides.part_enabled === true) particlesEnabled = true;
         else if (block.overrides.part_enabled === false) particlesEnabled = false;
@@ -1103,8 +1073,15 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
         const visibleSegments = data.segments.filter(s => time >= s.start - 2.0 && time <= s.end + 2.0);
         
         visibleSegments.forEach(seg => {
+            // Apply Segment Overrides
+            const segColorText = seg.style?.colorText;
+            const segColorActive = seg.style?.colorActive;
+            const segScale = seg.style?.scale || 1.0;
+
             const lines = getLines(seg.id, seg.words);
-            const fontSize = (config.font.fontSize || 80);
+            const baseFontSize = (config.font.fontSize || 80);
+            // Apply scale override
+            const fontSize = baseFontSize * segScale; 
             const lineHeight = fontSize * 1.2;
             const totalH = lines.length * lineHeight;
             let startY = (CANVAS_HEIGHT - totalH) / 2 + lineHeight/2;
@@ -1122,7 +1099,11 @@ export const CanvasVideoRenderer = forwardRef<CanvasVideoRendererRef, CanvasVide
                     const isFuture = time < w.start;
                     
                     let alpha = 1.0;
-                    let color = isActive ? effectiveColorsActive : effectiveColorsText;
+                    // Determine Colors: Segment Override -> Active Keyframe -> Config
+                    let color = isActive 
+                        ? (segColorActive || effectiveColorsActive) 
+                        : (segColorText || effectiveColorsText);
+                        
                     let scale = 1.0;
                     
                     if (isFuture) {

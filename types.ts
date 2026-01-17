@@ -47,6 +47,15 @@ declare global {
   }
 }
 
+export interface LoadedAsset {
+  id: string;
+  type: 'image' | 'video' | 'font';
+  name: string;
+  url: string; // Object URL
+  file: Blob; // Raw data
+  mimeType: string;
+}
+
 export interface Word {
   word: string;
   start: number;
@@ -57,6 +66,15 @@ export interface Word {
 
 export type SectionType = 'verse' | 'chorus' | 'bridge' | 'intro' | 'outro';
 
+export interface SegmentStyle {
+    colorText?: string;
+    colorActive?: string;
+    scale?: number; // Multiplier relative to base font size
+    offsetX?: number; // -1 to 1 (screen percentage)
+    offsetY?: number; // -1 to 1
+    letterSpacing?: number; // px
+}
+
 export interface Segment {
   id: string;
   start: number;
@@ -64,6 +82,7 @@ export interface Segment {
   text: string;
   section?: string;
   words: Word[];
+  style?: SegmentStyle; // New: Per-segment style overrides
 }
 
 export interface LyricData {
@@ -301,8 +320,11 @@ export interface ProjectAssets {
     fonts: Array<{ name: string, data: string, mimeType: string }>;
 }
 
+export type AppProjectType = 'video-lyrics' | 'visualizer' | 'typography';
+
 export interface ProjectFile {
   version: string;
+  type?: AppProjectType;
   timestamp: number;
   name: string;
   lyricData: LyricData;
