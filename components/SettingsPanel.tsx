@@ -1,9 +1,15 @@
 
 
+
+
+
+
+
+
 import React, { useState, useRef } from 'react';
-import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play, Check, X, Copy, Film } from 'lucide-react';
+import { Sliders, LayoutTemplate, Palette, Sparkles, Video, Type, Image as ImageIcon, Upload, Grid, Music, Camera, Aperture, Clock, Plus, Trash2, Monitor, Timer, FolderOpen, FileJson, FileText, FileAudio, Volume2, VolumeX, Mic2, Layers, AlignLeft, Tags, RotateCcw, AlignJustify, Code, Download, BookOpen, Edit2, Play, Check, X, Copy, Film, MoveRight, Activity, LogOut, FileOutput, Save, Wand2 } from 'lucide-react';
 import { TEMPLATES, FONTS, RESOLUTIONS, TEMPLATE_SHADER_GLSL, TEMPLATE_CAMERA_JS, TEMPLATE_EVENT_PRESET } from '../constants';
-import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle, EventBlock, CustomEffect, CustomEffectType, LoadedAsset } from '../types';
+import { RendererConfig, AnimationKeyframe, AudioLayer, LyricData, SectionType, SectionStyle, ImageEffect, ProceduralStyle, EventBlock, CustomEffect, CustomEffectType, LoadedAsset, AnimationStyle, ActiveStyle, TextEffectType } from '../types';
 import { TimelineEditor } from './TimelineEditor';
 
 interface SettingsPanelProps {
@@ -38,6 +44,21 @@ interface SettingsPanelProps {
   onSelectAsset?: (asset: LoadedAsset) => void;
 }
 
+// --- CONSTANTS FOR DROPDOWNS ---
+const ENTRANCE_STYLES: AnimationStyle[] = ['fade', 'slide', 'slam', 'zoom', 'typewriter', 'blur', 'glitch', 'elastic', 'scramble', 'spiral', 'inflate', 'fly-in', 'unfold', 'swirl-in'];
+const ACTIVE_STYLES: ActiveStyle[] = ['pulse', 'jitter', 'bounce', 'neon', 'wave', 'rotate', 'skew', 'pop', 'flash', 'float', 'shiver', 'glitch-shake', 'bass-bulge', 'wobble', 'breathing', 'tremble'];
+const EXIT_STYLES: AnimationStyle[] = ['fade', 'slide', 'zoom', 'blur', 'sink', 'burn', 'shrink', 'drop', 'implode', 'roll-out', 'fly-out'];
+
+// Helper: Format seconds to SRT time format (00:00:00,000)
+const formatToSRTTime = (seconds: number) => {
+    const date = new Date(0);
+    date.setMilliseconds(seconds * 1000);
+    const iso = date.toISOString();
+    // ISO format: 1970-01-01T00:00:00.000Z
+    // We want: 00:00:00,000
+    return iso.substr(11, 8) + ',' + iso.substr(20, 3);
+};
+
 // Helper Components
 const ToggleInput: React.FC<{ label: string, value: boolean, onChange: (v: boolean) => void }> = ({ label, value, onChange }) => (
   <div className="flex items-center justify-between">
@@ -65,6 +86,23 @@ const ColorInput: React.FC<{ label: string, value: string, onChange: (v: string)
       <span className="text-xs font-mono text-gray-500">{value}</span>
     </div>
   </div>
+);
+
+const SelectInput: React.FC<{ label: string, icon?: React.ElementType, value: string, options: string[], onChange: (v: string) => void }> = ({ label, icon: Icon, value, options, onChange }) => (
+    <div className="flex flex-col gap-1">
+        <label className="text-[9px] font-bold text-gray-500 uppercase flex items-center gap-1">
+            {Icon && <Icon size={10} />} {label}
+        </label>
+        <select 
+            value={value} 
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full bg-neutral-950 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-300 outline-none focus:border-cyan-500"
+        >
+            {options.map(opt => (
+                <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+            ))}
+        </select>
+    </div>
 );
 
 const DocSection: React.FC<{ title: string, description: string, code?: string }> = ({ title, description, code }) => {
@@ -151,6 +189,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       onUpdate(newConfig);
   };
 
+  const updateSectionTextEffect = (section: SectionType, fx: TextEffectType, value: number) => {
+      const newConfig = JSON.parse(JSON.stringify(config));
+      if (!newConfig.sectionStyles[section].textEffects) {
+          newConfig.sectionStyles[section].textEffects = { glitch: 0, glow: 0, shift: 0, wave: 0 };
+      }
+      newConfig.sectionStyles[section].textEffects[fx] = value;
+      onUpdate(newConfig);
+  };
+
+  const updateSectionAnimation = (section: SectionType, type: 'entrance' | 'active' | 'exit', value: string) => {
+      const newConfig = JSON.parse(JSON.stringify(config));
+      if (!newConfig.sectionStyles[section].animation) newConfig.sectionStyles[section].animation = {};
+      newConfig.sectionStyles[section].animation[type] = value;
+      onUpdate(newConfig);
+  };
+
   const handleBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -205,11 +259,39 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   const handleAudioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        onAudioLayerAdd(file);
-        if (audioInputRef.current) audioInputRef.current.value = '';
-    }
+      const file = e.target.files?.[0];
+      if (file) {
+          onAudioLayerAdd(file);
+      }
+      if (audioInputRef.current) audioInputRef.current.value = '';
+  };
+
+  // --- EXPORT HANDLERS ---
+  const exportLyricsAsSrt = () => {
+    let srtContent = '';
+    data.segments.forEach((seg, index) => {
+        srtContent += `${index + 1}\n`;
+        srtContent += `${formatToSRTTime(seg.start)} --> ${formatToSRTTime(seg.end)}\n`;
+        srtContent += `${seg.text}\n\n`;
+    });
+    const blob = new Blob([srtContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subtitles.srt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportLyricsAsJson = () => {
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lyrics.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // --- CUSTOM EFFECT HANDLERS ---
@@ -379,7 +461,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Type size={14}/> Lyrics Source
                     </h3>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 mb-4">
                          <button
                             onClick={() => jsonInputRef.current?.click()}
                             className="flex flex-col items-center justify-center gap-2 p-4 bg-neutral-900 hover:bg-neutral-700 rounded-lg border border-white/5 transition-colors group"
@@ -409,6 +491,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                             accept=".srt"
                             className="hidden"
                         />
+                    </div>
+                    
+                    {/* EXPORT SECTION */}
+                    <h4 className="text-[10px] font-bold text-gray-600 uppercase mb-2">Export Lyrics</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button 
+                            onClick={exportLyricsAsJson}
+                            className="flex items-center justify-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 rounded border border-white/5 text-xs text-gray-300"
+                        >
+                             <FileJson size={12}/> JSON
+                        </button>
+                        <button 
+                            onClick={exportLyricsAsSrt}
+                            className="flex items-center justify-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 rounded border border-white/5 text-xs text-gray-300"
+                        >
+                             <FileText size={12}/> SRT
+                        </button>
                     </div>
                 </section>
 
@@ -556,6 +655,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         <ToggleInput label="Vignette" value={config.effects.vignette} onChange={(v) => updateNested('effects', 'vignette', v)} />
                         <ToggleInput label="Film Grain" value={config.effects.filmGrain} onChange={(v) => updateNested('effects', 'filmGrain', v)} />
                         <ToggleInput label="Glow" value={config.effects.glow > 0} onChange={(v) => updateNested('effects', 'glow', v ? 0.8 : 0)} />
+                        <ToggleInput label="Crimson Pop" value={config.effects.crimsonPop} onChange={(v) => updateNested('effects', 'crimsonPop', v)} />
+                        <ToggleInput label="Blood Pulse" value={config.effects.bloodPulse} onChange={(v) => updateNested('effects', 'bloodPulse', v)} />
+                        <ToggleInput label="Red Glitch" value={config.effects.redChannelGlitch} onChange={(v) => updateNested('effects', 'redChannelGlitch', v)} />
                   </div>
               </section>
 
@@ -563,267 +665,252 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               {customEffects && customEffects.length > 0 && (
                   <section>
                       <h3 className="text-xs font-bold text-purple-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Code size={14}/> User Effects</h3>
-                      <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-2">
+                      <div className="space-y-2">
                           {customEffects.map(fx => (
-                              <ToggleInput 
-                                key={fx.id} 
-                                label={fx.name} 
-                                value={fx.active} 
-                                onChange={() => toggleEffect(fx.id)} 
-                              />
+                              <div key={fx.id} className="flex items-center justify-between bg-neutral-900 p-2 rounded-lg border border-white/5">
+                                  <div className="flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${fx.active ? 'bg-purple-500' : 'bg-gray-600'}`} />
+                                      <span className="text-xs font-medium text-gray-300">{fx.name}</span>
+                                  </div>
+                                  <ToggleInput label="" value={fx.active} onChange={() => toggleEffect(fx.id)} />
+                              </div>
                           ))}
                       </div>
                   </section>
               )}
+
+              <section>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Type size={14}/> Typography</h3>
+                  <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
+                      <SelectInput label="Font Family" icon={Type} value={config.font.family} options={FONTS} onChange={(v) => updateNested('font', 'family', v)} />
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                             <SelectInput label="Weight" value={config.font.weight} options={['100','300','400','700','900']} onChange={(v) => updateNested('font', 'weight', v)} />
+                        </div>
+                        <div className="flex items-end pb-1">
+                             <button onClick={() => updateNested('font', 'italic', !config.font.italic)} className={`p-1.5 rounded ${config.font.italic ? 'bg-cyan-600 text-white' : 'bg-neutral-800 text-gray-400'}`} title="Italic">
+                                 I
+                             </button>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-gray-500 uppercase">Font Size</label>
+                          <input type="range" min="20" max="200" value={config.font.fontSize} onChange={(e) => updateNested('font', 'fontSize', parseInt(e.target.value))} className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                      </div>
+                      <ColorInput label="Text Color" value={config.colors.text} onChange={(v) => updateNested('colors', 'text', v)} />
+                      <ColorInput label="Active Color" value={config.colors.active} onChange={(v) => updateNested('colors', 'active', v)} />
+                  </div>
+              </section>
+              
+               <section>
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={14}/> Particles</h3>
+                  <div className="bg-neutral-900 p-3 rounded-lg border border-white/5 space-y-3">
+                      <ToggleInput label="Enabled" value={config.particles.enabled} onChange={(v) => updateNested('particles', 'enabled', v)} />
+                      {config.particles.enabled && (
+                          <>
+                             <SelectInput label="Shape" value={config.particles.shape} options={['circle', 'square', 'star', 'hexagon', 'triangle', 'note', 'tetris']} onChange={(v) => updateNested('particles', 'shape', v)} />
+                             <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">Count</label>
+                                <input type="range" min="0" max="200" value={config.particles.count} onChange={(e) => updateNested('particles', 'count', parseInt(e.target.value))} className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                             </div>
+                             <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-gray-500 uppercase">Speed</label>
+                                <input type="range" min="0.1" max="5.0" step="0.1" value={config.particles.speed} onChange={(e) => updateNested('particles', 'speed', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                             </div>
+                          </>
+                      )}
+                  </div>
+              </section>
           </div>
         )}
 
-        {/* LIBRARY TAB */}
+        {/* TEMPLATES TAB */}
+        {activeTab === 'templates' && (
+            <div className="grid grid-cols-2 gap-3 p-4">
+                {TEMPLATES.map(t => (
+                    <button
+                        key={t.id}
+                        onClick={() => handleTemplateSelect(t)}
+                        className={`p-3 rounded-xl border text-left transition-all ${config.id === t.id ? 'bg-cyan-900/20 border-cyan-500/50' : 'bg-neutral-900 border-white/5 hover:border-white/20'}`}
+                    >
+                        <div className="font-bold text-xs text-gray-200 mb-1">{t.name}</div>
+                        <div className="text-[10px] text-gray-500">Preset</div>
+                    </button>
+                ))}
+            </div>
+        )}
+
+        {/* SECTIONS TAB */}
+        {activeTab === 'sections' && (
+            <div className="p-4 space-y-4">
+                {(['verse', 'chorus', 'bridge', 'intro', 'outro'] as SectionType[]).map((section) => {
+                    const style = config.sectionStyles[section];
+                    return (
+                        <div key={section} className="bg-neutral-900 border border-white/5 rounded-lg overflow-hidden">
+                            <div className="p-3 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Tags size={14} className="text-gray-500"/>
+                                    <span className="text-xs font-bold uppercase text-gray-300">{section}</span>
+                                </div>
+                                <ToggleInput label="" value={style.enabled} onChange={(v) => updateSectionStyle(section, 'enabled', v)} />
+                            </div>
+                            
+                            {style.enabled && (
+                                <div className="p-3 space-y-3 bg-black/20">
+                                    <div className="grid grid-cols-2 gap-2">
+                                         <ColorInput label="Text" value={style.colors_text || config.colors.text} onChange={(v) => updateSectionStyle(section, 'colors_text', v)} />
+                                         <ColorInput label="Active" value={style.colors_active || config.colors.active} onChange={(v) => updateSectionStyle(section, 'colors_active', v)} />
+                                    </div>
+                                    
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-gray-500 uppercase">Scale</label>
+                                        <input type="range" min="0.5" max="2.0" step="0.1" value={style.fontScale || 1.0} onChange={(e) => updateSectionStyle(section, 'fontScale', parseFloat(e.target.value))} className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                                    </div>
+
+                                    <div className="space-y-1 pt-2 border-t border-white/5">
+                                         <SelectInput label="Entrance" value={style.animation?.entrance || config.animation.entrance} options={ENTRANCE_STYLES} onChange={(v) => updateSectionAnimation(section, 'entrance', v)} />
+                                         <SelectInput label="Active Loop" value={style.animation?.active || config.animation.active} options={ACTIVE_STYLES} onChange={(v) => updateSectionAnimation(section, 'active', v)} />
+                                         <SelectInput label="Exit" value={style.animation?.exit || config.animation.exit} options={EXIT_STYLES} onChange={(v) => updateSectionAnimation(section, 'exit', v)} />
+                                    </div>
+
+                                    {/* NEW: TEXT EFFECTS CONTROLS */}
+                                    <div className="space-y-2 pt-2 border-t border-white/5">
+                                        <h4 className="text-[9px] font-bold text-purple-400 uppercase flex items-center gap-1"><Wand2 size={10}/> Text Shader FX</h4>
+                                        {[
+                                            { id: 'glitch', label: 'Glitch' },
+                                            { id: 'glow', label: 'Glow' },
+                                            { id: 'shift', label: 'RGB Shift' },
+                                            { id: 'wave', label: 'Wave' }
+                                        ].map((fx) => (
+                                            <div key={fx.id} className="flex items-center gap-2">
+                                                <span className="text-[10px] text-gray-400 w-12">{fx.label}</span>
+                                                <input 
+                                                    type="range" min="0" max="1" step="0.1"
+                                                    // @ts-ignore
+                                                    value={style.textEffects?.[fx.id] || 0}
+                                                    // @ts-ignore
+                                                    onChange={(e) => updateSectionTextEffect(section, fx.id, parseFloat(e.target.value))}
+                                                    className="flex-1 h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        )}
+        
+        {/* LIBRARY TAB (Custom Shader/JS Editor) */}
         {activeTab === 'library' && (
-            <div className="p-4 space-y-6">
-                {!editingEffect ? (
-                    <>
-                        <div className="flex gap-2 mb-4">
-                            <button onClick={() => addNewEffect('shader')} className="flex-1 bg-cyan-900/40 border border-cyan-500/30 hover:bg-cyan-800/50 text-cyan-200 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
-                                <Plus size={14}/> New Shader FX
+            <div className="flex flex-col h-full">
+                {editingEffect ? (
+                    <div className="flex flex-col h-full p-4 space-y-3">
+                         <div className="flex items-center justify-between mb-2">
+                             <input 
+                                value={editingEffect.name} 
+                                onChange={(e) => setEditingEffect({...editingEffect, name: e.target.value})}
+                                className="bg-transparent text-sm font-bold text-white outline-none border-b border-white/20 focus:border-cyan-500 w-full"
+                             />
+                             <div className="flex gap-2">
+                                <button onClick={() => setEditingEffect(null)} className="p-1.5 text-gray-400 hover:text-white"><X size={16}/></button>
+                             </div>
+                         </div>
+                         
+                         <div className="flex-1 bg-black rounded-lg border border-white/10 overflow-hidden flex flex-col">
+                             <div className="bg-white/5 px-3 py-1 text-[10px] text-gray-400 font-mono border-b border-white/5 flex justify-between">
+                                 <span>{editingEffect.type === 'shader' ? 'GLSL Fragment' : 'JavaScript Context'}</span>
+                             </div>
+                             <textarea 
+                                value={editingEffect.code}
+                                onChange={(e) => setEditingEffect({...editingEffect, code: e.target.value})}
+                                className="flex-1 bg-transparent p-3 text-xs font-mono text-gray-300 outline-none resize-none leading-relaxed"
+                                spellCheck={false}
+                             />
+                         </div>
+
+                         <div className="flex justify-between items-center">
+                             <button onClick={() => deleteEffect(editingEffect.id)} className="text-red-400 hover:text-red-300 text-xs font-bold flex items-center gap-1"><Trash2 size={14}/> Delete</button>
+                             <button onClick={() => saveEffect(editingEffect)} className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded font-bold text-xs flex items-center gap-2"><Save size={14}/> Save Effect</button>
+                         </div>
+                    </div>
+                ) : (
+                    <div className="p-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => addNewEffect('shader')} className="p-4 bg-neutral-900 border border-white/5 hover:border-purple-500 rounded-lg flex flex-col items-center gap-2 transition-colors">
+                                <Sparkles size={24} className="text-purple-400"/>
+                                <span className="text-xs font-bold text-gray-300">New Shader</span>
                             </button>
-                            <button onClick={() => addNewEffect('camera')} className="flex-1 bg-purple-900/40 border border-purple-500/30 hover:bg-purple-800/50 text-purple-200 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2">
-                                <Plus size={14}/> New Camera FX
+                            <button onClick={() => addNewEffect('camera')} className="p-4 bg-neutral-900 border border-white/5 hover:border-orange-500 rounded-lg flex flex-col items-center gap-2 transition-colors">
+                                <Camera size={24} className="text-orange-400"/>
+                                <span className="text-xs font-bold text-gray-300">New Script</span>
                             </button>
                         </div>
                         
-                        <div className="space-y-3">
-                            {customEffects.length === 0 ? (
-                                <div className="text-center text-gray-500 py-8 text-xs italic">
-                                    No custom effects created yet.<br/>Use the buttons above or download templates from the Guide.
-                                </div>
-                            ) : (
-                                customEffects.map(fx => (
-                                    <div key={fx.id} className="bg-neutral-900 border border-white/5 rounded-lg p-3 group">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <div className={`w-2 h-2 rounded-full ${fx.type === 'shader' ? 'bg-cyan-500' : 'bg-purple-500'}`} />
-                                                <span className="font-bold text-sm text-gray-200">{fx.name}</span>
-                                                {fx.active && <span className="text-[9px] bg-green-900 text-green-300 px-1 rounded uppercase">Active</span>}
-                                            </div>
-                                            <div className="flex gap-1">
-                                                <button onClick={() => setEditingEffect(fx)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white" title="Edit Code">
-                                                    <Edit2 size={14}/>
-                                                </button>
-                                                <button onClick={() => toggleEffect(fx.id)} className="p-1.5 hover:bg-white/10 rounded text-gray-400 hover:text-white" title={fx.active ? "Disable" : "Enable"}>
-                                                    <Play size={14} fill={fx.active ? "currentColor" : "none"}/>
-                                                </button>
-                                                <button onClick={() => deleteEffect(fx.id)} className="p-1.5 hover:bg-red-900/50 rounded text-gray-400 hover:text-red-400" title="Delete">
-                                                    <Trash2 size={14}/>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <p className="text-[10px] text-gray-500 line-clamp-2 font-mono bg-black/30 p-1.5 rounded">
-                                            {fx.description || "// No description"}
-                                        </p>
-                                    </div>
-                                ))
-                            )}
+                        <div className="space-y-2">
+                             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">My Library</h3>
+                             {customEffects.length === 0 ? (
+                                 <div className="text-center p-6 border border-dashed border-white/10 rounded-lg text-xs text-gray-500">
+                                     No custom effects yet.
+                                 </div>
+                             ) : (
+                                 customEffects.map(fx => (
+                                     <div key={fx.id} onClick={() => setEditingEffect(fx)} className="flex items-center justify-between p-3 bg-neutral-900 border border-white/5 rounded-lg hover:border-cyan-500/50 cursor-pointer group transition-colors">
+                                         <div className="flex items-center gap-3">
+                                             <div className={`p-2 rounded ${fx.type === 'shader' ? 'bg-purple-900/20 text-purple-400' : 'bg-orange-900/20 text-orange-400'}`}>
+                                                 {fx.type === 'shader' ? <Sparkles size={16}/> : <Camera size={16}/>}
+                                             </div>
+                                             <div>
+                                                 <div className="text-xs font-bold text-gray-200">{fx.name}</div>
+                                                 <div className="text-[10px] text-gray-500">{fx.type === 'shader' ? 'GLSL' : 'JS'} &bull; {fx.active ? 'Active' : 'Inactive'}</div>
+                                             </div>
+                                         </div>
+                                         <Edit2 size={14} className="text-gray-600 group-hover:text-white transition-colors" />
+                                     </div>
+                                 ))
+                             )}
                         </div>
-                    </>
-                ) : (
-                    <div className="flex flex-col h-full">
-                        <div className="flex items-center justify-between mb-2">
-                            <input 
-                                autoFocus
-                                value={editingEffect.name}
-                                onChange={(e) => setEditingEffect({...editingEffect, name: e.target.value})}
-                                className="bg-transparent text-sm font-bold border-b border-transparent focus:border-cyan-500 outline-none w-1/2"
-                                placeholder="Effect Name"
-                            />
-                            <div className="flex gap-2">
-                                <button onClick={() => setEditingEffect(null)} className="text-xs text-gray-400 hover:text-white bg-neutral-700 px-2 py-1 rounded">Cancel</button>
-                                <button onClick={() => saveEffect(editingEffect)} className="text-xs bg-cyan-600 px-3 py-1 rounded text-white font-bold">Save</button>
-                            </div>
-                        </div>
-                        <input 
-                            value={editingEffect.description || ''}
-                            onChange={(e) => setEditingEffect({...editingEffect, description: e.target.value})}
-                            className="bg-neutral-900 text-xs text-gray-400 p-2 rounded mb-2 w-full outline-none"
-                            placeholder="Short description..."
-                        />
-                        <div className="flex-1 bg-neutral-950 rounded border border-white/10 p-2 overflow-hidden flex flex-col">
-                            <div className="text-[10px] text-gray-500 mb-1 font-mono">{editingEffect.type === 'shader' ? '// GLSL Fragment Shader Body' : '// JavaScript Camera Logic'}</div>
-                            <textarea 
-                                value={editingEffect.code}
-                                onChange={(e) => setEditingEffect({...editingEffect, code: e.target.value})}
-                                className="flex-1 bg-transparent text-xs font-mono text-green-400 outline-none resize-none leading-relaxed"
-                                spellCheck={false}
-                            />
-                        </div>
-                        <p className="text-[10px] text-gray-500 mt-2">
-                            {editingEffect.type === 'shader' 
-                                ? "Writes to 'color'. Use 'effect_main(vec3 color, vec2 uv)'." 
-                                : "Executes per frame. Access 'ctx', 'time', 'bass'."}
-                        </p>
                     </div>
                 )}
             </div>
         )}
-
+        
         {/* GUIDE TAB */}
         {activeTab === 'guide' && (
             <div className="p-4 space-y-6">
-                <div className="text-center mb-6">
-                    <BookOpen className="mx-auto text-cyan-500 mb-2" size={24}/>
-                    <h2 className="text-sm font-bold text-white">Effect Developer Guide</h2>
-                    <p className="text-[10px] text-gray-400">Custom Shaders & Scripts</p>
-                </div>
-
-                {/* 1. LAYER SYSTEM EXPLANATION */}
-                <div className="mb-6">
-                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-widest mb-3 border-b border-white/5 pb-1">Understanding Layers</h3>
-                    <div className="bg-neutral-950/50 p-3 rounded-lg text-[10px] text-gray-400 space-y-2">
-                        <p>The renderer draws in the following order:</p>
-                        <ol className="list-decimal pl-4 space-y-1">
-                            <li><span className="text-cyan-400 font-bold">Background (GLSL):</span> Images, videos, or solid colors are drawn here. <span className="italic text-gray-500">Only GLSL Shaders affect this layer.</span></li>
-                            <li><span className="text-purple-400 font-bold">Camera (JS):</span> The entire screen (Background + Text) is rotated/scaled/shaken. <span className="italic text-gray-500">Use JS Camera FX to move everything.</span></li>
-                            <li><span className="text-white font-bold">Text & Particles:</span> Drawn on top. To style specific text, use the Timeline.</li>
-                        </ol>
-                    </div>
-                </div>
-
-                {/* 2. GLSL SHADERS */}
-                <div className="mb-6">
-                    <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Code size={12}/> GLSL Shaders (Background)
-                    </h3>
-                    
-                    <DocSection 
-                        title="Simple Color Shift" 
-                        description="Mixes the background color with a specific color (Pink) based on the Bass level."
-                        code={`vec3 effect_main(vec3 color, vec2 uv) {
-  // Target Color (Pink)
-  vec3 pink = vec3(1.0, 0.0, 1.0);
-  
-  // Mix original with pink based on Bass strength
-  return mix(color, pink, u_bass * 0.8 * u_intensity);
-}`}
-                    />
-
-                    <DocSection 
-                        title="Wavy Distortion" 
-                        description="Modifies the color by sampling from a distorted UV position. Creates a ripple effect."
-                        code={`vec3 effect_main(vec3 color, vec2 uv) {
-  // Create a wave offset
-  float wave = sin(uv.y * 10.0 + u_time * 2.0) * 0.05;
-  
-  // You cannot change 'uv' directly here for sampling (limitation),
-  // but you can modify color brightness based on position
-  color += wave * u_bass;
-  
-  return color;
-}`}
-                    />
-                </div>
-
-                {/* 3. CAMERA SCRIPTS */}
-                <div className="mb-6">
-                    <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                        <Camera size={12}/> Camera Scripts (Global)
-                    </h3>
-
-                    <DocSection 
-                        title="Bass Zoom (The Drop)" 
-                        description="Zooms into the center of the screen whenever the bass hits above 0.5."
-                        code={`if (bass > 0.5) {
-  // Zoom in by 10% scaled by bass
-  const zoom = 1.0 + (bass * 0.1 * intensity);
-  ctx.scale(zoom, zoom);
-}`}
-                    />
-
-                    <DocSection 
-                        title="Continuous Rotation" 
-                        description="Slowly spins the entire screen (text included) based on time."
-                        code={`// Rotate based on time
-const angle = Math.sin(time * 0.5) * 0.1 * intensity;
-ctx.rotate(angle);`}
-                    />
-                </div>
-
-                {/* 4. TEXT TARGETING INFO */}
-                <div className="mb-6">
-                    <h3 className="text-xs font-bold text-white uppercase tracking-widest mb-3 border-b border-white/5 pb-1">Targeting Text Only</h3>
-                    <div className="bg-neutral-900 p-3 rounded-lg text-[10px] text-gray-400">
-                        <p className="mb-2">
-                            <strong className="text-white">Note:</strong> You cannot use GLSL shaders to apply pixel effects (like blur/glitch) <em>only</em> to the text while keeping the background clean.
-                        </p>
-                        <p>
-                            To style text, go to the <strong className="text-cyan-400">Timeline</strong> tab, click on a lyric segment, and use the <strong>Style</strong> tab to change Color, Glow, and Size per line.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="flex gap-2 pt-4 border-t border-white/5">
-                    <button onClick={() => downloadTemplate(TEMPLATE_SHADER_GLSL, 'custom_shader.glsl')} className="flex-1 bg-neutral-900 hover:bg-neutral-700 py-2 rounded text-xs font-bold border border-white/10 text-cyan-400">Download GLSL Template</button>
-                    <button onClick={() => downloadTemplate(TEMPLATE_CAMERA_JS, 'custom_camera.js')} className="flex-1 bg-neutral-900 hover:bg-neutral-700 py-2 rounded text-xs font-bold border border-white/10 text-purple-400">Download JS Template</button>
-                </div>
+                 <section>
+                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><BookOpen size={14}/> Documentation</h3>
+                     <DocSection 
+                        title="Shader Uniforms (GLSL)" 
+                        description="Variables available in your custom fragment shaders."
+                        code={`uniform float u_time;\nuniform vec2 u_resolution;\nuniform float u_bass; // 0.0-1.0\nuniform float u_mid;\nuniform float u_high;\nuniform float u_intensity;`}
+                     />
+                     <DocSection 
+                        title="Camera Context (JS)" 
+                        description="Variables available in your custom camera scripts."
+                        code={`ctx.rotate(angle);\nctx.scale(x, y);\nctx.translate(x, y);\n// variables: bass, mid, high, time, width, height`}
+                     />
+                 </section>
+                 
+                 <section>
+                      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Download size={14}/> Templates</h3>
+                      <div className="space-y-2">
+                           <button onClick={() => downloadTemplate(TEMPLATE_SHADER_GLSL, 'shader_template.glsl')} className="w-full text-left px-3 py-2 bg-neutral-900 border border-white/5 rounded text-xs text-gray-300 hover:text-white hover:bg-neutral-800 transition-colors">
+                               Download GLSL Template
+                           </button>
+                           <button onClick={() => downloadTemplate(TEMPLATE_CAMERA_JS, 'camera_script.js')} className="w-full text-left px-3 py-2 bg-neutral-900 border border-white/5 rounded text-xs text-gray-300 hover:text-white hover:bg-neutral-800 transition-colors">
+                               Download JS Camera Template
+                           </button>
+                           <button onClick={() => downloadTemplate(TEMPLATE_EVENT_PRESET, 'event_preset.json')} className="w-full text-left px-3 py-2 bg-neutral-900 border border-white/5 rounded text-xs text-gray-300 hover:text-white hover:bg-neutral-800 transition-colors">
+                               Download Event Preset JSON
+                           </button>
+                      </div>
+                 </section>
             </div>
         )}
-        
-        {/* TEMPLATES & SECTIONS TABS (Standard Content) */}
-        {activeTab === 'templates' && (
-          <div className="p-4 grid grid-cols-2 gap-3">
-             {TEMPLATES.map(t => (
-               <button
-                 key={t.id}
-                 onClick={() => handleTemplateSelect(t)}
-                 className="flex flex-col items-start gap-2 p-3 bg-neutral-900 border border-white/5 hover:border-cyan-500/50 rounded-xl transition-all hover:bg-neutral-800 group text-left"
-               >
-                 <div className="w-full aspect-video bg-black/40 rounded-lg mb-1 overflow-hidden relative">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Sparkles className="text-gray-700 group-hover:text-cyan-500 transition-colors" />
-                    </div>
-                 </div>
-                 <div>
-                    <span className="text-sm font-bold block text-gray-200 group-hover:text-cyan-400">{t.name}</span>
-                 </div>
-               </button>
-             ))}
-          </div>
-        )}
 
-        {activeTab === 'sections' && (
-             <div className="p-4 space-y-6">
-                 {['verse', 'chorus', 'bridge', 'intro', 'outro'].map((sectionKey) => {
-                     const key = sectionKey as SectionType;
-                     const style = config.sectionStyles?.[key] || { enabled: false };
-                     return (
-                         <div key={key} className="bg-neutral-900 border border-white/5 rounded-lg p-3">
-                             <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-2">
-                                 <h3 className="text-xs font-bold text-gray-200 uppercase tracking-widest">{key}</h3>
-                                 <ToggleInput 
-                                    label=""
-                                    value={style.enabled} 
-                                    onChange={(v) => updateSectionStyle(key, 'enabled', v)}
-                                 />
-                             </div>
-                             {style.enabled && (
-                                <div className="space-y-3">
-                                    <div className="flex justify-between text-xs text-gray-400 mb-1">
-                                        <span>Font Scale</span>
-                                        <span>{Math.round((style.fontScale || 1.0) * 100)}%</span>
-                                    </div>
-                                    <input 
-                                        type="range" min="0.5" max="2.0" step="0.1" 
-                                        value={style.fontScale || 1.0} 
-                                        onChange={(e) => updateSectionStyle(key, 'fontScale', parseFloat(e.target.value))}
-                                        className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                                    />
-                                     <ColorInput label="Active Color" value={style.colors_active || config.colors.active} onChange={(v) => updateSectionStyle(key, 'colors_active', v)} />
-                                </div>
-                             )}
-                         </div>
-                     )
-                 })}
-             </div>
-        )}
       </div>
     </div>
   );

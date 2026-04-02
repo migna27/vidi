@@ -1,5 +1,9 @@
 
 
+
+
+
+
 import 'react';
 
 // Fix for missing JSX.IntrinsicElements types in environment
@@ -103,14 +107,14 @@ export interface RenderStatus {
   totalFrames?: number;
 }
 
-export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch' | 'stack-pop' | 'random';
-export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing' | 'glitch-shake' | 'bass-bulge' | 'stretch-vertical' | 'orbit-spin' | 'blur-pulse' | 'chromatic-beat' | 'random';
-export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note' | 'tetris';
+export type AnimationStyle = 'fade' | 'slide' | 'slam' | 'zoom' | 'typewriter' | 'spin' | 'blur' | 'glitch' | 'elastic' | 'drop' | 'scramble' | 'spiral' | 'inflate' | 'sink' | 'burn' | 'stretch' | 'stack-pop' | 'random' | 'shrink' | 'fly-in' | 'unfold' | 'swirl-in' | 'implode' | 'roll-out' | 'fly-out' | 'swipe' | 'reveal' | 'flip' | 'bounce-in' | 'whip';
+export type ActiveStyle = 'pulse' | 'jitter' | 'bounce' | 'neon' | 'wave' | 'rotate' | 'skew' | 'pop' | 'flash' | 'float' | 'shiver' | 'rainbow' | 'heartbeat' | 'swing' | 'glitch-shake' | 'bass-bulge' | 'stretch-vertical' | 'orbit-spin' | 'blur-pulse' | 'chromatic-beat' | 'random' | 'wobble' | 'breathing' | 'tremble' | 'shake' | 'vibrate' | 'glow-pulse' | 'color-shift';
+export type ParticleShape = 'circle' | 'square' | 'star' | 'hexagon' | 'triangle' | 'note' | 'tetris' | 'cross' | 'heart';
 
 export type BackgroundType = 'solid' | 'image' | 'video' | 'procedural';
-export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna' | 'nebula' | 'fire' | 'circuit' | 'rain' | 'digital-heartbeat';
+export type ProceduralStyle = 'grid' | 'stars' | 'plasma' | 'tunnel' | 'matrix' | 'gradient-wave' | 'hexagons' | 'kaleidoscope' | 'dna' | 'nebula' | 'fire' | 'circuit' | 'rain' | 'digital-heartbeat' | 'fractal' | 'hyperspace' | 'aurora';
 export type VisualizerStyle = 'spectrum' | 'orb' | 'shockwave' | 'none';
-export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x' | 'bright-happy';
+export type ImageEffect = 'none' | 'dark-error' | 'red-error' | 'zoom-slow' | 'chromatic-shift' | 'alert' | 'thermal' | 'vhs-stripes' | 'liquid-warp' | 'scan-drift' | 'ghosting' | 'pixel-noise' | 'mirror-x' | 'bright-happy' | 'crt' | 'neon-glow' | 'cyberpunk';
 export type LayoutMode = 'center' | 'alternating';
 export type TextAlignment = 'global' | 'center' | 'left' | 'right' | 'alternating';
 
@@ -146,6 +150,9 @@ export interface EffectOverrides {
     fx_kaleidoscope?: boolean;
     fx_rgbSplit?: boolean;
     fx_vhs?: boolean; // Added for override support
+    fx_crimsonPop?: boolean;
+    fx_bloodPulse?: boolean;
+    fx_redChannelGlitch?: boolean;
     
     // Camera Booleans
     cam_shake?: boolean;
@@ -190,6 +197,8 @@ export interface AnimationKeyframe {
   values: KeyframeValues;
 }
 
+export type TextEffectType = 'glitch' | 'glow' | 'shift' | 'wave';
+
 export interface SectionStyle {
   enabled: boolean;
   colors_text?: string;
@@ -206,6 +215,8 @@ export interface SectionStyle {
     active?: ActiveStyle;
     exit?: AnimationStyle;
   };
+  // New: Specific GLSL effects for text layer
+  textEffects?: Record<TextEffectType, number>; // value 0.0 to 1.0 (intensity)
 }
 
 export interface AudioLayer {
@@ -280,6 +291,9 @@ export interface RendererConfig {
     oldMovie: boolean;
     kaleidoscope: boolean;
     rgbSplit: boolean;
+    crimsonPop: boolean;
+    bloodPulse: boolean;
+    redChannelGlitch: boolean;
   };
   particles: {
     enabled: boolean;

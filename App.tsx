@@ -1,5 +1,8 @@
 
 
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { DEFAULT_LYRICS, TEMPLATES, RESOLUTIONS } from './constants';
 import { CanvasVideoRenderer, CanvasVideoRendererRef } from './components/CanvasVideoRenderer';
@@ -7,7 +10,7 @@ import { Controls } from './components/Controls';
 import { SettingsPanel } from './components/SettingsPanel';
 import { ProjectLauncher } from './components/ProjectLauncher';
 import { LyricData, RenderStatus, AudioVisualizerData, Segment, Word, RendererConfig, ProjectFile, AudioLayer, EventBlock, CustomEffect, AppProjectType, LoadedAsset } from './types';
-import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2, FileVideo, Package, Home, HardDrive } from 'lucide-react';
+import { Save, FolderOpen, Activity, Loader2, Video, Download, RotateCcw, Check, Zap, Trash2, FileVideo, Package, Home, HardDrive, X } from 'lucide-react';
 
 // @ts-ignore
 import { Muxer as WebMMuxer, ArrayBufferTarget as WebMArrayBufferTarget } from 'webm-muxer';
@@ -174,6 +177,109 @@ const extractAudioAnalysis = (audioBuffer: AudioBuffer, fps: number, duration: n
     return result;
 };
 
+// --- EXPORT MODAL ---
+interface ExportConfig {
+    fileName: string;
+    resolution: { id: string, width: number, height: number, name: string };
+    fps: number;
+    bitrate: number;
+    format: 'mp4' | 'webm';
+}
+
+const ExportModal = ({ 
+    isOpen, 
+    onClose, 
+    onConfirm, 
+    defaultName 
+}: { 
+    isOpen: boolean, 
+    onClose: () => void, 
+    onConfirm: (config: ExportConfig) => void, 
+    defaultName: string 
+}) => {
+    const [fileName, setFileName] = useState(defaultName);
+    const [resId, setResId] = useState('16:9');
+    const [fps, setFps] = useState(30);
+    const [bitrateLevel, setBitrateLevel] = useState(1e7); // 10 Mbps
+    const [format, setFormat] = useState<'mp4' | 'webm'>('mp4');
+
+    if (!isOpen) return null;
+
+    const selectedRes = RESOLUTIONS.find(r => r.id === resId) || RESOLUTIONS[0];
+
+    const handleExport = () => {
+        onConfirm({
+            fileName: fileName || 'video_export',
+            resolution: selectedRes,
+            fps,
+            bitrate: bitrateLevel,
+            format
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 animate-in fade-in duration-200">
+            <div className="bg-neutral-900 border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2"><Video size={20} className="text-cyan-400"/> Export Configuration</h2>
+                    <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full text-gray-400 hover:text-white"><X size={18}/></button>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase">File Name</label>
+                        <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white outline-none focus:border-cyan-500"/>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase">Resolution</label>
+                            <select value={resId} onChange={(e) => setResId(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white outline-none">
+                                {RESOLUTIONS.map(r => (
+                                    <option key={r.id} value={r.id}>{r.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase">Format</label>
+                            <select value={format} onChange={(e) => setFormat(e.target.value as any)} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white outline-none">
+                                <option value="mp4">MP4 (H.264)</option>
+                                <option value="webm">WEBM (VP9)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase">Frame Rate</label>
+                            <select value={fps} onChange={(e) => setFps(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white outline-none">
+                                <option value={30}>30 FPS</option>
+                                <option value={60}>60 FPS</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-gray-500 uppercase">Quality</label>
+                            <select value={bitrateLevel} onChange={(e) => setBitrateLevel(Number(e.target.value))} className="w-full bg-black/50 border border-white/10 rounded p-2 text-sm text-white outline-none">
+                                <option value={5e6}>Draft (5 Mbps)</option>
+                                <option value={1e7}>Standard (10 Mbps)</option>
+                                <option value={2.5e7}>High (25 Mbps)</option>
+                                <option value={5e7}>Ultra (50 Mbps)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-8 flex gap-3">
+                    <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-gray-300 font-bold transition-colors">Cancel</button>
+                    <button onClick={handleExport} className="flex-1 py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg shadow-cyan-900/20 transition-all flex items-center justify-center gap-2">
+                        Start Export <Zap size={16} fill="currentColor"/>
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+};
+
 export default function App() {
   // --- APP STATE ---
   const [viewMode, setViewMode] = useState<'launcher' | 'editor'>('launcher');
@@ -192,15 +298,15 @@ export default function App() {
   const [eventBlocks, setEventBlocks] = useState<EventBlock[]>([]);
   const [audioLayers, setAudioLayers] = useState<AudioLayer[]>([]);
   const [customEffects, setCustomEffects] = useState<CustomEffect[]>([]);
-  const [assets, setAssets] = useState<LoadedAsset[]>([]); // New: Asset Library
+  const [assets, setAssets] = useState<LoadedAsset[]>([]); 
   
   const backgroundFileRef = useRef<{ file: Blob, type: 'image' | 'video' } | null>(null);
   const fontFilesRef = useRef<Map<string, Blob>>(new Map());
   const [renderStatus, setRenderStatus] = useState<RenderStatus>({ state: 'idle', progress: 0 });
   const [audioVisualizerData, setAudioVisualizerData] = useState<AudioVisualizerData>({ bass: 0, mid: 0, high: 0, raw: new Uint8Array() });
   const [rendererConfig, setRendererConfig] = useState<RendererConfig>(TEMPLATES[0]);
-  const [exportFormat, setExportFormat] = useState<'webm' | 'mp4'>('mp4');
-  const [exportMode, setExportMode] = useState<'normal' | 'alpha'>('normal');
+  const [showExportModal, setShowExportModal] = useState(false);
+  
   const [cachedBlob, setCachedBlob] = useState<Blob | null>(null);
   const [isCaching, setIsCaching] = useState(false);
   
@@ -225,7 +331,6 @@ export default function App() {
               setDb(database);
               await refreshProjectsList(database);
               
-              // Load Shaders
               const transaction = database.transaction(['shaders'], 'readonly');
               const store = transaction.objectStore('shaders');
               const request = store.getAll();
@@ -251,7 +356,6 @@ export default function App() {
   // --- LAUNCHER ACTIONS ---
 
   const handleCreateProject = (type: AppProjectType, name: string) => {
-      // Reset State
       setData(DEFAULT_LYRICS);
       setRendererConfig(TEMPLATES[0]);
       setAudioLayers([]);
@@ -271,13 +375,11 @@ export default function App() {
           const project = await dbGet(db, 'projects', name) as ProjectFile;
           if (!project) throw new Error("Project not found");
 
-          // Restore State
           setCurrentProjectName(project.name);
           if (project.lyricData) setData(project.lyricData);
           if (project.config) setRendererConfig(project.config);
           if (project.eventBlocks) setEventBlocks(project.eventBlocks);
           
-          // Merge custom effects 
           if (project.customEffects) {
               setCustomEffects(prev => {
                   const combined = [...prev];
@@ -288,7 +390,6 @@ export default function App() {
               });
           }
 
-          // Restore Assets
           if (project.assets) {
               initAudioEngine();
               const restoredLayers: AudioLayer[] = [];
@@ -313,7 +414,6 @@ export default function App() {
                   backgroundFileRef.current = { file: blob, type: project.assets.background.type };
                   setRendererConfig(prev => ({ ...prev, background: { ...prev.background, type: project.assets.background!.type, url: url } }));
                   
-                  // Add to assets library
                   loadedAssetsList.push({
                       id: 'bg-' + Date.now(),
                       type: project.assets.background.type,
@@ -331,7 +431,6 @@ export default function App() {
                   const fontFace = new FontFace(fontAsset.name, `url(${url})`);
                   try { const loaded = await fontFace.load(); document.fonts.add(loaded); } catch(e) {}
                   
-                  // Add to assets library
                   loadedAssetsList.push({
                       id: 'font-' + fontAsset.name,
                       type: 'font',
@@ -375,12 +474,11 @@ export default function App() {
   const handleCustomEffectsUpdate = (fx: CustomEffect[]) => {
       setCustomEffects(fx);
       if (db) {
-          // Save updated/new effects to DB
           fx.forEach(effect => dbPut(db, 'shaders', effect));
       }
   };
 
-  // --- APP LOGIC (Mixer, Playback, Render) ---
+  // --- APP LOGIC ---
   const initAudioEngine = () => {
       if (!audioContextRef.current) {
           const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -435,9 +533,7 @@ export default function App() {
   };
 
   const handleAssetLoaded = (type: 'background' | 'font', file: File, meta?: string) => {
-      // Add to Library
       const url = URL.createObjectURL(file);
-      
       let assetType: 'image' | 'video' | 'font' = 'image';
       if (type === 'font') {
           assetType = 'font';
@@ -455,10 +551,8 @@ export default function App() {
       };
       setAssets(prev => [...prev, newAsset]);
 
-      // Apply
       if (type === 'background') {
           backgroundFileRef.current = { file, type: assetType === 'video' ? 'video' : 'image' };
-          // NOTE: Config update happens in SettingsPanel handler usually, but here we ensure Ref is set
       }
       else if (type === 'font' && meta) fontFilesRef.current.set(meta, file);
   };
@@ -476,8 +570,6 @@ export default function App() {
               }
           }));
       }
-      // For fonts, we don't auto-apply because they are selected via dropdown by name.
-      // But they are available in the system now.
   };
 
   useEffect(() => {
@@ -611,12 +703,10 @@ export default function App() {
           const jsonString = JSON.stringify(project);
 
           if (db) {
-              // Save to Internal DB
               await dbPut(db, 'projects', project);
               alert("Project saved to internal storage!");
               await refreshProjectsList(db);
           } else {
-              // Fallback Download
               const blob = new Blob([jsonString], { type: 'application/json' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -629,37 +719,67 @@ export default function App() {
       finally { setRenderStatus({ state: 'idle', progress: 0 }); }
   };
 
-  const startRendering = async () => {
+  const startRendering = async (exportConfig: ExportConfig) => {
     if (audioLayers.length === 0) return alert("No audio layers.");
     if (renderStatus.state !== 'idle') return;
-    const resConfig = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
+    
+    setShowExportModal(false); // Close Modal
+    
+    // Use selected export resolution instead of current view resolution
+    const resConfig = exportConfig.resolution;
+    
     setRenderStatus({ state: 'analyzing', progress: 0 });
     if (isPlaying && audioContextRef.current) { audioContextRef.current.suspend(); setIsPlaying(false); }
 
     try {
-      const sampleRate = 44100; const FPS = 30; const totalFrames = Math.ceil(duration * FPS);
+      const sampleRate = 44100; 
+      const FPS = exportConfig.fps;
+      const totalFrames = Math.ceil(duration * FPS);
+      
       const offlineCtx = new OfflineAudioContext(2, Math.ceil(Math.max(0.1, duration) * sampleRate), sampleRate);
       const offlineMaster = offlineCtx.createGain(); offlineMaster.connect(offlineCtx.destination);
       audioLayers.forEach(l => { if (l.muted || (audioLayers.some(al=>al.solo) && !l.solo)) return; const s = offlineCtx.createBufferSource(); s.buffer = l.buffer; const g = offlineCtx.createGain(); g.gain.value = l.volume; s.connect(g); g.connect(offlineMaster); s.start(0); });
       const renderedBuffer = await offlineCtx.startRendering();
       const analysisFrames = extractAudioAnalysis(renderedBuffer, FPS, duration);
+      
       setRenderStatus({ state: 'rendering', progress: 0, totalFrames });
-      const format = exportMode === 'alpha' ? 'webm' : exportFormat;
-      let muxer = format === 'mp4' ? new Mp4Muxer({ target: new Mp4ArrayBufferTarget(), video: { codec: 'avc', width: resConfig.width, height: resConfig.height }, audio: { codec: 'aac', numberOfChannels: 2, sampleRate }, fastStart: 'in-memory' }) : new WebMMuxer({ target: new WebMArrayBufferTarget(), video: { codec: 'V_VP9', width: resConfig.width, height: resConfig.height, frameRate: FPS, alpha: exportMode === 'alpha' }, audio: { codec: 'A_OPUS', numberOfChannels: 2, sampleRate } });
+      
+      const format = exportConfig.format;
+      let muxer = format === 'mp4' ? new Mp4Muxer({ target: new Mp4ArrayBufferTarget(), video: { codec: 'avc', width: resConfig.width, height: resConfig.height }, audio: { codec: 'aac', numberOfChannels: 2, sampleRate }, fastStart: 'in-memory' }) : new WebMMuxer({ target: new WebMArrayBufferTarget(), video: { codec: 'V_VP9', width: resConfig.width, height: resConfig.height, frameRate: FPS, alpha: false }, audio: { codec: 'A_OPUS', numberOfChannels: 2, sampleRate } });
       const vEnc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => console.error(e) });
-      await vEnc.configure({ codec: format === 'mp4' ? 'avc1.4d002a' : 'vp09.00.10.08', width: resConfig.width, height: resConfig.height, bitrate: 1e7, alpha: exportMode === 'alpha' ? 'keep' : 'discard' });
+      await vEnc.configure({ codec: format === 'mp4' ? 'avc1.4d002a' : 'vp09.00.10.08', width: resConfig.width, height: resConfig.height, bitrate: exportConfig.bitrate, alpha: 'discard' });
+      
       const canvas = rendererRef.current?.canvas;
       if (!canvas) throw new Error("No Canvas");
+
+      // RESIZE CANVAS FOR EXPORT
+      if (rendererRef.current?.resize) {
+          rendererRef.current.resize(resConfig.width, resConfig.height);
+          // Wait for a tick to allow WebGL context to update viewport inside resize
+          await new Promise(r => setTimeout(r, 100));
+      }
+
       for (let i = 0; i < totalFrames; i++) {
          const t = i / FPS;
          if (rendererRef.current?.seekToTime) await rendererRef.current.seekToTime(t);
-         rendererRef.current?.drawFrame(t, analysisFrames[i] || {bass:0,mid:0,high:0,raw:new Uint8Array(128)}, exportMode === 'alpha');
-         const frame = new VideoFrame(canvas, { timestamp: t * 1e6, alpha: exportMode === 'alpha' ? 'keep' : 'discard' });
+         rendererRef.current?.drawFrame(t, analysisFrames[i] || {bass:0,mid:0,high:0,raw:new Uint8Array(128)}, false);
+         const frame = new VideoFrame(canvas, { timestamp: t * 1e6, alpha: 'discard' });
          if (vEnc.encodeQueueSize > 5) await vEnc.flush();
          vEnc.encode(frame, { keyFrame: i % (FPS * 2) === 0 });
          frame.close();
-         if (i % 10 === 0) { setRenderStatus(prev => ({ ...prev, progress: i })); await new Promise(r => setTimeout(r, 0)); }
+         
+         if (i % 15 === 0) { 
+             setRenderStatus(prev => ({ ...prev, progress: i })); 
+             await new Promise(r => setTimeout(r, 0)); 
+         }
       }
+      
+      // RESTORE CANVAS SIZE
+      const previewRes = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
+      if (rendererRef.current?.resize) {
+          rendererRef.current.resize(previewRes.width, previewRes.height);
+      }
+
       setRenderStatus({ state: 'encoding', progress: 100 });
       await vEnc.flush(); vEnc.close();
       const aEnc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: console.error });
@@ -676,20 +796,25 @@ export default function App() {
       muxer.finalize();
       const blob = new Blob([muxer.target.buffer], { type: format === 'mp4' ? 'video/mp4' : 'video/webm' });
       
-      // Save Logic
       if (db) {
-          const fileName = `${currentProjectName}_render.${format}`;
+          const fileName = `${exportConfig.fileName}.${format}`;
           await dbPut(db, 'renders', { name: fileName, blob, date: new Date() });
-          // Also Download automatically as it is a final render
           const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `render.${format}`; a.click();
+          const a = document.createElement('a'); a.href = url; a.download = fileName; a.click();
       } else {
           const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `render.${format}`; a.click();
+          const a = document.createElement('a'); a.href = url; a.download = `${exportConfig.fileName}.${format}`; a.click();
       }
       setRenderStatus({ state: 'done', progress: 100 });
       setTimeout(() => setRenderStatus({ state: 'idle', progress: 0 }), 3000);
-    } catch (e) { console.error(e); setRenderStatus({ state: 'idle', progress: 0 }); alert("Render Failed"); }
+    } catch (e) { 
+        console.error(e); 
+        setRenderStatus({ state: 'idle', progress: 0 }); 
+        alert("Render Failed"); 
+        // Attempt Restore
+        const previewRes = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
+        if (rendererRef.current?.resize) rendererRef.current.resize(previewRes.width, previewRes.height);
+    }
   };
 
   const viewportResolution = RESOLUTIONS.find(r => r.id === rendererConfig.resolutionId) || RESOLUTIONS[0];
@@ -711,6 +836,13 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-neutral-950 text-white overflow-hidden font-sans">
+      <ExportModal 
+        isOpen={showExportModal} 
+        onClose={() => setShowExportModal(false)} 
+        onConfirm={startRendering}
+        defaultName={currentProjectName}
+      />
+
       <header className="h-14 border-b border-white/10 flex items-center justify-between px-4 bg-neutral-900 shrink-0 z-20">
         <div className="flex items-center gap-4">
            <button onClick={() => setViewMode('launcher')} className="p-2 bg-neutral-800 hover:bg-neutral-700 rounded-lg text-gray-400 hover:text-white transition-colors">
@@ -734,13 +866,8 @@ export default function App() {
              </div>
 
              <div className="flex items-center gap-2 bg-neutral-800 p-1 rounded-md border border-white/5">
-                 <div className="flex items-center px-1 border-r border-white/5 mr-1">
-                     <button onClick={() => setExportMode('normal')} className={`text-[10px] px-2 py-1 font-bold rounded ${exportMode === 'normal' ? 'bg-neutral-600 text-white' : 'text-gray-400 hover:text-white'}`}>NORMAL</button>
-                     <button onClick={() => setExportMode('alpha')} className={`text-[10px] px-2 py-1 font-bold rounded flex items-center gap-1 ${exportMode === 'alpha' ? 'bg-neutral-600 text-white' : 'text-gray-400 hover:text-white'}`} title="Transparent Background (WEBM)">ALPHA</button>
-                 </div>
-                 {!cachedBlob && exportMode === 'normal' && <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value as any)} className="bg-transparent text-xs font-bold text-gray-300 outline-none px-2 py-1"><option value="mp4">MP4</option><option value="webm">WEBM</option></select>}
-                 <button onClick={startRendering} disabled={renderStatus.state !== 'idle'} className={`${cachedBlob && exportMode === 'normal' ? 'bg-green-600 hover:bg-green-500' : 'bg-cyan-600 hover:bg-cyan-500'} disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all`}>
-                    {renderStatus.state === 'idle' ? <>{cachedBlob && exportMode === 'normal' ? <Zap size={14} fill="currentColor"/> : <Video size={14} />} {cachedBlob && exportMode === 'normal' ? 'INSTANT' : 'EXPORT'}</> : <><Loader2 size={14} className="animate-spin" /> {renderStatus.state === 'analyzing' ? 'PROCESSING' : renderStatus.state === 'encoding' ? 'ENCODING' : `${Math.round((renderStatus.progress / (renderStatus.totalFrames || 1)) * 100)}%`}</>}
+                 <button onClick={() => setShowExportModal(true)} disabled={renderStatus.state !== 'idle'} className="bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white text-xs font-bold px-4 py-1.5 rounded flex items-center gap-2 transition-all">
+                    {renderStatus.state === 'idle' ? <><Video size={14} /> EXPORT</> : <><Loader2 size={14} className="animate-spin" /> {renderStatus.state === 'analyzing' ? 'PROCESSING' : renderStatus.state === 'encoding' ? 'ENCODING' : `${Math.round((renderStatus.progress / (renderStatus.totalFrames || 1)) * 100)}%`}</>}
                  </button>
              </div>
         </div>
@@ -773,7 +900,7 @@ export default function App() {
           </div>
 
           <div className="flex-1 bg-neutral-950 relative flex flex-col min-w-0">
-               <div className={`flex-1 flex items-center justify-center p-8 overflow-hidden ${exportMode === 'alpha' ? 'bg-[conic-gradient(#333_90deg,transparent_90deg)] bg-[length:20px_20px] bg-neutral-800' : 'bg-[radial-gradient(circle_at_center,_#1a1a1a_1px,_transparent_1px)] bg-[length:20px_20px]'}`}>
+               <div className={`flex-1 flex items-center justify-center p-8 overflow-hidden bg-[radial-gradient(circle_at_center,_#1a1a1a_1px,_transparent_1px)] bg-[length:20px_20px]`}>
                    <div className="relative shadow-2xl border border-white/10" style={{ aspectRatio: `${viewportResolution.width/viewportResolution.height}`, height: viewportResolution.width/viewportResolution.height > 1 ? 'auto' : '90%', width: viewportResolution.width/viewportResolution.height > 1 ? '90%' : 'auto', maxHeight: '90%', maxWidth: '90%' }}>
                        <CanvasVideoRenderer ref={rendererRef} data={data} config={rendererConfig} isPlaying={isPlaying} eventBlocks={eventBlocks} customEffects={customEffects} />
                    </div>

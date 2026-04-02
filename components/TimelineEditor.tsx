@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { LyricData, Segment, Word, EventBlock, EffectOverrides, CustomEffect, RendererConfig } from '../types';
-import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown, Palette, Type, MousePointer2 } from 'lucide-react';
+import { Clock, Trash2, Plus, PlayCircle, Download, AlertCircle, ChevronDown, ChevronUp, Tag, X, FolderInput, Check, Zap, Eye, EyeOff, TrendingUp, TrendingDown, Palette, Type, MousePointer2, ArrowDownCircle, Timer } from 'lucide-react';
 
 interface TimelineEditorProps {
   data: LyricData;
@@ -245,9 +245,10 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     duration = 60
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeTabMap, setActiveTabMap] = useState<Record<string, 'text' | 'style'>>({});
+  const [activeTabMap, setActiveTabMap] = useState<Record<string, 'text' | 'style' | 'timing'>>({});
+  const [autoScroll, setAutoScroll] = useState(true);
 
-  const setTab = (id: string, tab: 'text' | 'style') => {
+  const setTab = (id: string, tab: 'text' | 'style' | 'timing') => {
       setActiveTabMap(prev => ({...prev, [id]: tab}));
   };
 
@@ -277,6 +278,22 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     newSegments[index] = updatedSegment;
     if (updates.start !== undefined) newSegments.sort((a, b) => a.start - b.start);
     onUpdate({ ...data, segments: newSegments });
+  };
+
+  const updateWordTiming = (segmentIndex: number, wordIndex: number, start: number, end: number) => {
+      const newSegments = [...data.segments];
+      const segment = newSegments[segmentIndex];
+      const newWords = [...segment.words];
+      
+      newWords[wordIndex] = {
+          ...newWords[wordIndex],
+          start,
+          end
+      };
+      
+      // We don't resort or force boundaries here to allow flexible editing
+      newSegments[segmentIndex] = { ...segment, words: newWords };
+      onUpdate({ ...data, segments: newSegments });
   };
 
   const updateSegmentStyle = (index: number, styleUpdates: Partial<Segment['style']>) => {
@@ -418,9 +435,12 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const getSectionBg = (name: string) => SECTION_BG[name.toLowerCase().split(' ')[0]] || 'bg-neutral-800 text-gray-400';
 
   let currentSection = 'verse'; 
+  let isFirstSegment = true; // Track first segment to prevent deleting its section if minimal
 
   // Auto-scroll logic
   useEffect(() => {
+    if (!autoScroll) return;
+
     const activeItem = combinedItems.find(item => {
         if(item.type === 'segment') return currentTime >= item.data.start && currentTime <= item.data.end;
         if(item.type === 'block') return currentTime >= item.data.start && currentTime <= item.data.end;
@@ -441,7 +461,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
             }
         }
     }
-  }, [currentTime, combinedItems]);
+  }, [currentTime]);
 
   return (
     <div className="flex flex-col h-full bg-neutral-900 border-l border-white/5">
@@ -459,6 +479,13 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
             <div className="flex items-center gap-2">
                 <Clock size={16} className="text-cyan-400" /> 
                 <span className="text-xs font-bold text-gray-200 uppercase tracking-widest">Detail View</span>
+                <button 
+                    onClick={() => setAutoScroll(!autoScroll)}
+                    className={`ml-2 p-1 rounded-full transition-colors ${autoScroll ? 'bg-cyan-500/20 text-cyan-400' : 'bg-transparent text-gray-600 hover:text-gray-400'}`}
+                    title={autoScroll ? "Disable Auto-Scroll" : "Enable Auto-Scroll"}
+                >
+                    <ArrowDownCircle size={14} />
+                </button>
             </div>
             
             <div className="flex gap-2">
@@ -496,17 +523,44 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                         
                         // Handle Section Headers
                         const isNewSection = !!seg.section;
+                        // Use the section property if it exists, otherwise use the running currentSection.
+                        // However, we want to visually group them. 
+                        // If it IS a new section, we update our running 'currentSection' variable.
                         if (isNewSection) currentSection = seg.section!;
-                        else if (idx === 0 && !seg.section) currentSection = 'verse'; 
+                        else if (isFirstSegment && !seg.section) currentSection = 'verse'; // Default first
                         
+                        const isFirst = isFirstSegment;
+                        isFirstSegment = false; // Next ones are not first
+
                         return (
                              <div key={seg.id} className="flex flex-col gap-1">
                                 {isNewSection && (
-                                    <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 ${getSectionBg(currentSection)} border border-white/5 shadow-sm sticky top-0 z-10`}>
-                                        <div className="flex items-center gap-2">
+                                    <div className={`flex items-center justify-between px-3 py-1.5 rounded-md mt-2 ${getSectionBg(currentSection)} border border-white/5 shadow-sm sticky top-0 z-10 group/section transition-colors`}>
+                                        <div className="flex items-center gap-2 flex-1">
                                             <Tag size={12} className="opacity-70" />
-                                            <span className="text-[10px] font-bold uppercase tracking-widest">{currentSection}</span>
+                                            {/* EDITABLE SECTION DROPDOWN */}
+                                            <select 
+                                                value={currentSection}
+                                                onChange={(e) => updateSegmentData(idx, { section: e.target.value })}
+                                                className="bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer appearance-none hover:text-white transition-colors w-full"
+                                            >
+                                                <option value="verse" className="bg-neutral-900 text-blue-400">Verse</option>
+                                                <option value="chorus" className="bg-neutral-900 text-pink-400">Chorus</option>
+                                                <option value="bridge" className="bg-neutral-900 text-yellow-400">Bridge</option>
+                                                <option value="intro" className="bg-neutral-900 text-gray-400">Intro</option>
+                                                <option value="outro" className="bg-neutral-900 text-red-400">Outro</option>
+                                            </select>
                                         </div>
+                                        {/* REMOVE SECTION BUTTON (Merge with previous) - Disable if first item */}
+                                        {!isFirst && (
+                                            <button 
+                                                onClick={() => updateSegmentData(idx, { section: undefined })}
+                                                className="text-white/50 hover:text-white p-1 rounded hover:bg-black/20 opacity-0 group-hover/section:opacity-100 transition-opacity"
+                                                title="Merge with previous section"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                                 <div 
@@ -529,6 +583,12 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                                 <Type size={12} /> Text
                                             </button>
                                             <button 
+                                                onClick={() => setTab(seg.id, 'timing')}
+                                                className={`p-1 rounded text-[10px] flex items-center gap-1 ${currentTab === 'timing' ? 'bg-neutral-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                            >
+                                                <Timer size={12} /> Timing
+                                            </button>
+                                            <button 
                                                 onClick={() => setTab(seg.id, 'style')}
                                                 className={`p-1 rounded text-[10px] flex items-center gap-1 ${currentTab === 'style' ? 'bg-neutral-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                                             >
@@ -539,7 +599,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                         {/* Actions */}
                                         <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                                              {!isNewSection && (
-                                                <button onClick={() => updateSegmentData(idx, { section: 'new section' })} className="p-1 rounded-md hover:bg-white/10 text-gray-400 hover:text-white" title="Start New Section">
+                                                <button onClick={() => updateSegmentData(idx, { section: 'verse' })} className="p-1 rounded-md hover:bg-white/10 text-gray-400 hover:text-white" title="Start New Section Here">
                                                     <FolderInput size={14} />
                                                 </button>
                                              )}
@@ -570,6 +630,34 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                                                 onBlur={() => {}} 
                                                 placeholder="Enter lyrics..."
                                             />
+                                        </div>
+                                    )}
+
+                                    {/* TAB CONTENT: TIMING (NEW) */}
+                                    {currentTab === 'timing' && (
+                                        <div className="p-3 bg-black/20 max-h-48 overflow-y-auto custom-scrollbar">
+                                            <div className="grid grid-cols-[1fr,60px,60px] gap-2 mb-2 text-[9px] text-gray-500 uppercase font-bold border-b border-white/5 pb-1">
+                                                <span>Word</span>
+                                                <span className="text-center">Start</span>
+                                                <span className="text-center">End</span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                {seg.words.map((w, wIdx) => (
+                                                    <div key={wIdx} className="grid grid-cols-[1fr,60px,60px] gap-2 items-center hover:bg-white/5 rounded px-1 transition-colors">
+                                                        <span className="text-xs text-gray-300 truncate" title={w.word}>{w.word}</span>
+                                                        <TimeInput 
+                                                            className="bg-neutral-900/50 border border-white/5 rounded px-1 text-[10px] font-mono text-cyan-500 outline-none focus:border-cyan-500 text-center" 
+                                                            value={w.start} 
+                                                            onChange={(val) => updateWordTiming(idx, wIdx, val, w.end)} 
+                                                        />
+                                                        <TimeInput 
+                                                            className="bg-neutral-900/50 border border-white/5 rounded px-1 text-[10px] font-mono text-gray-500 outline-none focus:border-cyan-500 text-center" 
+                                                            value={w.end} 
+                                                            onChange={(val) => updateWordTiming(idx, wIdx, w.start, val)} 
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
 
